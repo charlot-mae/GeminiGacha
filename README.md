@@ -33,7 +33,7 @@ Updates won't be regular, as I work as a consultant full time. Please understand
 5. Exit
     - This terminates the cheat menu.
 
-**I highly recommend you SAVE YOUR "gacha_save.json" BEFORE USING THIS MENU. I will not be held responsible for any loss of/corruption of data.
+**I highly recommend you SAVE YOUR "gacha_save.json" BEFORE USING THIS MENU. I will not be held responsible for any loss of/corruption of data.**
 
 ---
 # Currency System
