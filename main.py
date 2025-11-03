@@ -773,7 +773,7 @@ def main_menu():
     
     while True:
         check_scavenging_results(data)
-        print("\n=== GEMSTONE GACHA ===")
+        print("\n=== GEMINI GACHA ===")
         print(f"Coins: {data['coins']} | Shards: {data['shards']} | Pulls: {data['pull_count']}")
         print(f"Rare Pity: {data['rare_pity']}/50 | Leg. Pity: {data['legendary_pity']}/100")
         print("1. Single Pull (100 coins)")
