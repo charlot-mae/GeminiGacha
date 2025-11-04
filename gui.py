@@ -180,6 +180,7 @@ class GachaApp:
             messagebox.showerror("Error", "Not enough coins!")
             return
         self.data["coins"] -= 100
+        self.update_resources()
         self.perform_pull_gui()
 
     def ten_pull(self):
@@ -187,6 +188,7 @@ class GachaApp:
             messagebox.showerror("Error", "Not enough coins!")
             return
         self.data["coins"] -= 900
+        self.update_resources()
         results = [self.perform_pull_core() for _ in range(10)]
         self.show_pull_results(results)
 
@@ -358,12 +360,20 @@ class GachaApp:
             frame = ttk.Frame(win, padding=10, style='Card.TFrame')
             frame.pack(fill=tk.X, pady=2, padx=10)
             ttk.Label(frame, text=f"{girl}: {count}", foreground=TEXT_FG).pack(side=tk.LEFT)
-            ttk.Button(frame, text="Sell 1", command=lambda g=girl: self.sell_dupe(g, 1)).pack(side=tk.RIGHT, padx=5)
-            ttk.Button(frame, text="Sell All", command=lambda g=girl: self.sell_dupe(g, count)).pack(side=tk.RIGHT)
+            ttk.Button(
+                frame,
+                text="Sell 1",
+                command=lambda g=girl, w=win: self.sell_dupe(g, 1, w)
+            ).pack(side=tk.RIGHT, padx=5)
+            ttk.Button(
+                frame,
+                text="Sell All",
+                command=lambda g=girl, c=count, w=win: self.sell_dupe(g, c, w)
+            ).pack(side=tk.RIGHT)
 
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
 
-    def sell_dupe(self, girl, amt):
+    def sell_dupe(self, girl, amt, window=None):
         current = self.data["dupes"][girl]
         sell_amt = min(amt, current)
         self.data["coins"] += sell_amt * 100
@@ -371,7 +381,10 @@ class GachaApp:
         if self.data["dupes"][girl] == 0:
             del self.data["dupes"][girl]
         save_game(self.data)
+        self.update_resources()
         messagebox.showinfo("Sold", f"Sold {sell_amt} dupe(s) of {girl} for {sell_amt*100} coins!")
+        if window is not None and window.winfo_exists():
+            window.destroy()
         self.gui_dupes()
 
     # ------------------------------------------------------------------
@@ -449,17 +462,24 @@ class GachaApp:
             frame = ttk.Frame(win, padding=5, style='Card.TFrame')
             frame.pack(fill=tk.X, pady=2, padx=10)
             ttk.Label(frame, text=f"{girl} Lv.{level} (Cost: {cost})", foreground=TEXT_FG).pack(side=tk.LEFT)
-            ttk.Button(frame, text="Train", command=lambda g=girl: self.train_girl(g, cost)).pack(side=tk.RIGHT)
+            ttk.Button(
+                frame,
+                text="Train",
+                command=lambda g=girl, c=cost, w=win: self.train_girl(g, c, w)
+            ).pack(side=tk.RIGHT)
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
 
-    def train_girl(self, girl, cost):
+    def train_girl(self, girl, cost, window=None):
         if self.data["shards"] < cost:
             messagebox.showerror("Error", "Not enough shards!")
             return
         self.data["shards"] -= cost
         self.data["inventory"][girl]["level"] += 1
         save_game(self.data)
+        self.update_resources()
         messagebox.showinfo("Success", f"{girl} is now Lv.{self.data['inventory'][girl]['level']}!")
+        if window is not None and window.winfo_exists():
+            window.destroy()
         self.gui_training()
 
     # ------------------------------------------------------------------
