@@ -219,55 +219,60 @@ class GachaApp:
         win.geometry("840x640")
         win.configure(bg=BG_DARK)
 
-        main = ttk.Frame(win, padding=12)
-        main.pack(fill=tk.BOTH, expand=True)
+        # === MAIN FRAME ===
+        main = tk.Frame(win, bg=BG_DARK)
+        main.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
+        # === CANVAS + SCROLLBAR ===
         canvas = tk.Canvas(main, bg=BG_DARK, highlightthickness=0)
         vbar = ttk.Scrollbar(main, orient="vertical", command=canvas.yview)
-        inner = ttk.Frame(canvas, style='Card.TFrame')
+        scrollable = tk.Frame(canvas, bg=BG_DARK)  # ← tk.Frame, not ttk!
 
+        # Dynamic resize
         def resize(event):
             canvas.itemconfig(inner_id, width=event.width - 20)
-        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner_id = canvas.create_window((0, 0), window=scrollable, anchor="nw")
         canvas.configure(yscrollcommand=vbar.set)
         canvas.bind("<Configure>", resize)
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
 
+        # === POPULATE ===
         for girl, gdata in self.data["inventory"].items():
-            card = ttk.Frame(inner, padding=12, style='Card.TFrame')
+            # DARK CARD
+            card = tk.Frame(scrollable, bg=BG_CARD, relief='flat', bd=1)
             card.pack(fill=tk.X, pady=6, padx=10)
 
+            # Portrait
             portrait = self.create_portrait(card, girl, 70)
             portrait.pack(side=tk.LEFT, padx=(0, 14))
 
-            txt = ttk.Frame(card)
+            # Text
+            txt = tk.Frame(card, bg=BG_CARD)
             txt.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
             stats = get_girl_stats(girl, gdata["level"], self.data)
             hp = int(get_current_hp(girl, gdata, self.data))
             info = girls_data[girl]
 
-            ttk.Label(txt, text=f"{girl} Lv.{gdata['level']}", font=("Segoe UI", 13, "bold"), foreground=TEXT_FG).pack(anchor="w")
-            ttk.Label(txt, text=f"{info['rarity']} | {info['element']} | {info['class']}", foreground=TEXT_SUB, font=("Segoe UI", 10)).pack(anchor="w")
+            tk.Label(txt, text=f"{girl} Lv.{gdata['level']}", font=("Segoe UI", 13, "bold"), fg=TEXT_FG, bg=BG_CARD).pack(anchor="w")
+            tk.Label(txt, text=f"{info['rarity']} | {info['element']} | {info['class']}", fg=TEXT_SUB, bg=BG_CARD, font=("Segoe UI", 10)).pack(anchor="w")
             hp_ratio = hp / stats['hp']
             hp_col = ERROR if hp_ratio <= 0.3 else WARN if hp_ratio <= 0.7 else SUCCESS
-            ttk.Label(txt, text=f"HP: {hp}/{stats['hp']}", foreground=hp_col).pack(anchor="w")
-            ttk.Label(txt, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}", foreground=TEXT_SUB).pack(anchor="w")
-            ttk.Label(txt, text=info['catchline'], foreground="#999999", font=("Segoe UI", 9, "italic")).pack(anchor="w")
+            tk.Label(txt, text=f"HP: {hp}/{stats['hp']}", fg=hp_col, bg=BG_CARD).pack(anchor="w")
+            tk.Label(txt, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}", fg=TEXT_SUB, bg=BG_CARD).pack(anchor="w")
+            tk.Label(txt, text=info['catchline'], fg="#999999", bg=BG_CARD, font=("Segoe UI", 9, "italic")).pack(anchor="w")
 
             if not is_available(gdata):
                 if gdata.get("scavenge_end"):
-                    elapsed = get_current_time() - (gdata["scavenge_end"] - 300)
-                    left = max(0, 300 - elapsed) / 60
+                    left = max(0, 300 - (get_current_time() - (gdata["scavenge_end"] - 300))) / 60
                     status, col = f"Scavenging ({left:.1f} min)", WARN
                 else:
-                    elapsed = get_current_time() - gdata["recovery_start"]
-                    left = max(0, 600 - elapsed) / 60
+                    left = max(0, 600 - (get_current_time() - gdata["recovery_start"])) / 60
                     status, col = f"Recovering ({left:.1f} min)", ERROR
-                ttk.Label(txt, text=status, foreground=col, font=("Segoe UI", 9)).pack(anchor="w")
+                tk.Label(txt, text=status, fg=col, bg=BG_CARD, font=("Segoe UI", 9)).pack(anchor="w")
 
             ttk.Button(txt, text="Details", command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=6)
 
