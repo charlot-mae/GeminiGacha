@@ -51,8 +51,9 @@ class GachaApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Gemstone Gacha")
-        self.root.geometry("920x680")
+        self.root.geometry("1080x720")  # ← CHANGED
         self.root.configure(bg=BG_DARK)
+        self.root.resizable(True, True)  # ← Optional: lock size
 
         style = ttk.Style()
         style.theme_use('clam')
@@ -87,6 +88,21 @@ class GachaApp:
         save_game(self.data)
         self.root.quit()
 
+    def open_window(self, title, width=1080, height=720):
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.geometry(f"{width}x{height}")
+        win.configure(bg=BG_DARK)
+        win.resizable(False, False)
+        
+        # Center on screen
+        win.update_idletasks()
+        x = (win.winfo_screenwidth() // 2) - (width // 2)
+        y = (win.winfo_screenheight() // 2) - (height // 2)
+        win.geometry(f"+{x}+{y}")
+        
+        return win
+
     # ------------------------------------------------------------------
     # PORTRAIT
     # ------------------------------------------------------------------
@@ -105,7 +121,7 @@ class GachaApp:
     # ------------------------------------------------------------------
     def create_main_menu(self):
         self.clear_frame()
-        frame = ttk.Frame(self.root, padding=25, style='Card.TFrame')
+        frame = ttk.Frame(self.root, padding=40, style='Card.TFrame')
         frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(frame, text="GEMSTONE GACHA", font=("Segoe UI", 22, "bold"), foreground=ACCENT).pack(pady=12)
@@ -175,8 +191,7 @@ class GachaApp:
         return {"girl": girl, "rarity": rarity, "new": new}
 
     def show_pull_results(self, results):
-        win = tk.Toplevel(self.root)
-        win.title("Pull Results")
+        win = self.open_window("Pull Results")
         win.geometry("520x640")
         win.configure(bg=BG_DARK)
 
@@ -214,8 +229,7 @@ class GachaApp:
     # INVENTORY – PERFECT
     # ------------------------------------------------------------------
     def gui_inventory(self):
-        win = tk.Toplevel(self.root)
-        win.title("Inventory")
+        win = self.open_window("Inventory")
         win.geometry("840x640")
         win.configure(bg=BG_DARK)
 
@@ -287,8 +301,7 @@ class GachaApp:
         hp = int(get_current_hp(girl, gdata, self.data))
         info = girls_data[girl]
 
-        win = tk.Toplevel(self.root)
-        win.title(f"{girl} - Details")
+        win = self.open_window(f"{girl} - Details")
         win.geometry("400x500")
         win.configure(bg=BG_DARK)
 
@@ -305,8 +318,7 @@ class GachaApp:
     # DUPES
     # ------------------------------------------------------------------
     def gui_dupes(self):
-        win = tk.Toplevel(self.root)
-        win.title("Dupes")
+        win = self.open_window("Dupes")
         win.geometry("500x500")
         win.configure(bg=BG_DARK)
 
@@ -344,8 +356,7 @@ class GachaApp:
         log = io.StringIO()
         with redirect_stdout(log):
             turn_based_battle(self.data)
-        win = tk.Toplevel(self.root)
-        win.title("Battle Log")
+        win = self.open_window("Battle Log")
         win.geometry("720x620")
         win.configure(bg=BG_DARK)
         text = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=("Consolas", 10), bg=BG_CARD, fg=TEXT_FG)
@@ -358,8 +369,7 @@ class GachaApp:
     # TRAINING
     # ------------------------------------------------------------------
     def gui_training(self):
-        win = tk.Toplevel(self.root)
-        win.title("Training")
+        win = self.open_window("Training")
         win.geometry("500x500")
         win.configure(bg=BG_DARK)
         girls = list(self.data["inventory"].keys())
@@ -395,8 +405,7 @@ class GachaApp:
         log = io.StringIO()
         with redirect_stdout(log), redirect_stderr(log):
             show_shop(self.data, girls_data, get_current_time, is_available, save_game, "gacha_save.json")
-        win = tk.Toplevel(self.root)
-        win.title("Shop Log")
+        win = self.open_window("Shop Log")
         win.geometry("700x500")
         win.configure(bg=BG_DARK)
         text = scrolledtext.ScrolledText(win, wrap=tk.WORD, bg=BG_CARD, fg=TEXT_FG)
@@ -409,8 +418,7 @@ class GachaApp:
     # SCAVENGING
     # ------------------------------------------------------------------
     def gui_scavenging(self):
-        win = tk.Toplevel(self.root)
-        win.title("Scavenging")
+        win = self.open_window("Scavenging")
         win.geometry("500x400")
         win.configure(bg=BG_DARK)
         avail = [g for g, gd in self.data["inventory"].items() if is_available(gd)]
@@ -442,8 +450,7 @@ class GachaApp:
         log = io.StringIO()
         with redirect_stdout(log):
             healing_session(self.data)
-        win = tk.Toplevel(self.root)
-        win.title("Healing Session")
+        win = self.open_window("Healing Session")
         win.geometry("600x400")
         win.configure(bg=BG_DARK)
         text = scrolledtext.ScrolledText(win, wrap=tk.WORD, bg=BG_CARD, fg=TEXT_FG)
