@@ -149,8 +149,8 @@ def load_save():
         data = {
             "inventory": {},
             "dupes": {},
-            "coins": 0,
-            "shards": 0,
+            "coins": 1000,
+            "shards": 200,
             "pull_count": 0,
             "rare_pity": 0,
             "legendary_pity": 0
@@ -266,6 +266,8 @@ def get_current_hp(girl, gdata, data):
     elapsed = get_current_time() - gdata["recovery_start"]
     max_hp = get_girl_stats(girl, gdata["level"], data)["hp"]
     hp_at_start = gdata["hp_at_start"]
+    if hp_at_start is None:
+        return max_hp
     if elapsed >= 600:
         return max_hp
     recovered = (elapsed / 600.0) * (max_hp - hp_at_start)
@@ -633,6 +635,7 @@ def turn_based_battle(data):
                 print(f"{monster['name']} attacks {target['name']} but it's blocked!")
             elif target["shield"]:
                 print(f"{monster['name']} attacks {target['name']} but shield absorbs it!")
+                target["shield"] = False
             else:
                 damage = max(1, monster["atk"] - target["stats"]["defense"])
                 target["hp"] -= damage
