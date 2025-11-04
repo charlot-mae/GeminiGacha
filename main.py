@@ -834,4 +834,19 @@ def main_menu():
 
 if __name__ == "__main__":
     from gui import run_gui
-    run_gui()
+    data = load_save()
+    api = {
+        "girls_data": girls_data,
+        "get_girl_stats": get_girl_stats,
+        "get_current_hp": get_current_hp,
+        "is_available": is_available,
+        "get_current_time": get_current_time,
+        "save_game": save_game,
+        "load_save": load_save,
+        "monsters": monsters,
+        "normal_victory_hook": normal_victory_hook,
+        "elemental_multiplier": elemental_multiplier,
+        "SINGLE_PULL_COST": SINGLE_PULL_COST,
+        "TEN_PULL_COST": TEN_PULL_COST,
+    }
+    run_gui(data, api)
