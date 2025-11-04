@@ -826,5 +826,9 @@ def main_menu():
         else:
             print("Invalid!")
 
+#if __name__ == "__main__":
+    #main_menu()
+
 if __name__ == "__main__":
-    main_menu()
+    from gui import run_gui
+    run_gui()
