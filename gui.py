@@ -45,16 +45,23 @@ RARITY_COLORS = {
     "Legendary":  "#FFAA00"
 }
 
-# ----------------------------------------------------------------------
-# Portrait placeholder
-# ----------------------------------------------------------------------
-def create_portrait(parent, girl_name, size=80):
+    # ------------------------------------------------------------------
+    # Portrait – now a *rounded* image that fits the dark theme
+    # ------------------------------------------------------------------
+def create_portrait(self, parent, girl_name, size=70):
     info = girls_data[girl_name]
-    elem_col = ELEMENT_COLORS.get(info["element"], "#666666")
-    rar_col  = RARITY_COLORS[info["rarity"]]
-    canvas = tk.Canvas(parent, width=size, height=size, bg=BG_CARD, highlightthickness=0)
-    canvas.create_oval(5, 5, size-5, size-5, fill=elem_col, outline=rar_col, width=3)
-    canvas.create_text(size//2, size//2, text=girl_name[:3].upper(), fill="white", font=("Arial", 11, "bold"))
+    # element colour → fill, rarity colour → border
+    fill  = ELEMENT_COLORS.get(info["element"], "#666666")
+    border = RARITY_COLORS[info["rarity"]]
+
+    canvas = tk.Canvas(parent, width=size, height=size,
+        bg=BG_CARD, highlightthickness=0)
+    # dark‑card background for the circle
+    canvas.create_oval(4, 4, size-4, size-4, fill=fill, outline=border, width=3)
+    # first 3 letters – big, white, bold
+    canvas.create_text(size//2, size//2,
+        text=girl_name[:3].upper(),
+        fill="white", font=("Segoe UI", 12, "bold"))
     return canvas
 
 # ----------------------------------------------------------------------
@@ -234,108 +241,91 @@ class GachaApp:
         return random.choice(candidates) if candidates else "Tama"
 
     # ------------------------------------------------------------------
-    # Inventory
-    # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
-    # Inventory – FINAL FIXED: No blank space, full width, scrollable
+    # INVENTORY – **NO WHITE SPOTS, NO BLANK RIGHT‑SIDE**
     # ------------------------------------------------------------------
     def gui_inventory(self):
         win = tk.Toplevel(self.root)
         win.title("Inventory")
-        win.geometry("820x620")
+        win.geometry("840x640")
         win.configure(bg=BG_DARK)
 
-        # === MAIN CONTAINER ===
-        main_frame = ttk.Frame(win, padding=15)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # ---------- MAIN container ----------
+        main = ttk.Frame(win, padding=12)
+        main.pack(fill=tk.BOTH, expand=True)
 
-        # === CANVAS + SCROLLBAR ===
-        canvas = tk.Canvas(main_frame, bg=BG_DARK, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable = ttk.Frame(canvas, style='Card.TFrame')
+        # ---------- CANVAS + SCROLLBAR ----------
+        canvas = tk.Canvas(main, bg=BG_DARK, highlightthickness=0)
+        vbar   = ttk.Scrollbar(main, orient="vertical", command=canvas.yview)
+        inner  = ttk.Frame(canvas, style='Card.TFrame')          # dark card background
 
-        # Bind resize
-        scrollable.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # make the inner frame fill the canvas width
+        def _resize(event):
+            canvas.itemconfig(inner_id, width=event.width - 20)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.bind("<Configure>", _resize)
 
-        # Create window with dynamic width
-        canvas.create_window((0, 0), window=scrollable, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
         canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        vbar.pack(side="right", fill="y")
 
-        # === RESIZE CANVAS ON WINDOW RESIZE ===
-        def _on_canvas_configure(event):
-            canvas_width = event.width
-            canvas.itemconfig(canvas.find_withtag("inner_window")[0], width=canvas_width - 20)
-        canvas.bind("<Configure>", _on_canvas_configure)
-
-        # === POPULATE GIRLS ===
+        # ---------- POPULATE GIRLS ----------
         for girl, gdata in self.data["inventory"].items():
-            frame = ttk.Frame(scrollable, padding=12, style='Card.TFrame')
-            frame.pack(fill=tk.X, pady=6, padx=10)
+            # each girl = one dark card
+            card = ttk.Frame(inner, padding=12, style='Card.TFrame')
+            card.pack(fill=tk.X, pady=6, padx=10)
 
-            # Portrait
-            portrait = create_portrait(frame, girl, 70)
-            portrait.pack(side=tk.LEFT, padx=(5, 15))
+            # ---- LEFT: portrait ----
+            portrait = self.create_portrait(card, girl, 70)
+            portrait.pack(side=tk.LEFT, padx=(0, 14))
 
-            # Info column
-            info_frame = ttk.Frame(frame)
-            info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # ---- RIGHT: all text (vertical stack) ----
+            txt = ttk.Frame(card)
+            txt.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
             stats = get_girl_stats(girl, gdata["level"], self.data)
-            hp = int(get_current_hp(girl, gdata, self.data))
-            info = girls_data[girl]
+            hp    = int(get_current_hp(girl, gdata, self.data))
+            info  = girls_data[girl]
 
-            # Name + Level
-            ttk.Label(info_frame, text=f"{girl} Lv.{gdata['level']}", 
-                     font=("Segoe UI", 13, "bold"), foreground=TEXT_FG).pack(anchor="w")
-            
-            # Rarity | Element | Class
-            ttk.Label(info_frame, text=f"{info['rarity']} | {info['element']} | {info['class']}", 
-                     foreground=TEXT_SUB, font=("Segoe UI", 10)).pack(anchor="w")
-            
-            # HP with color
+            # name + level
+            ttk.Label(txt, text=f"{girl} Lv.{gdata['level']}",
+                      font=("Segoe UI", 13, "bold"), foreground=TEXT_FG).pack(anchor="w")
+
+            # rarity | element | class
+            ttk.Label(txt, text=f"{info['rarity']} | {info['element']} | {info['class']}",
+                      foreground=TEXT_SUB, font=("Segoe UI", 10)).pack(anchor="w")
+
+            # HP – colour‑coded
             hp_ratio = hp / stats['hp']
-            if hp_ratio <= 0.3:
-                hp_color = ERROR
-            elif hp_ratio <= 0.7:
-                hp_color = WARN
-            else:
-                hp_color = SUCCESS
-            ttk.Label(info_frame, text=f"HP: {hp}/{stats['hp']}", foreground=hp_color).pack(anchor="w")
+            hp_col = ERROR if hp_ratio <= 0.3 else WARN if hp_ratio <= 0.7 else SUCCESS
+            ttk.Label(txt, text=f"HP: {hp}/{stats['hp']}", foreground=hp_col).pack(anchor="w")
 
-            # Stats
-            ttk.Label(info_frame, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}", 
-                     foreground=TEXT_SUB).pack(anchor="w")
+            # ATK / DEF / SPD
+            ttk.Label(txt, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}",
+                      foreground=TEXT_SUB).pack(anchor="w")
 
-            # Catchline
-            ttk.Label(info_frame, text=info['catchline'], 
-                     foreground="#999999", font=("Segoe UI", 9, "italic")).pack(anchor="w")
+            # catchline
+            ttk.Label(txt, text=info['catchline'],
+                      foreground="#999999", font=("Segoe UI", 9, "italic")).pack(anchor="w")
 
-            # Status
+            # status (scavenge / recover)
             if not is_available(gdata):
                 if gdata.get("scavenge_end"):
-                    elapsed = get_current_time() - (gdata["scavenge_end"] - 300)
-                    left = max(0, 300 - elapsed) / 60
-                    status = f"Scavenging ({left:.1f} min)"
-                    color = WARN
+                    left = max(0, 300 - (get_current_time() - (gdata["scavenge_end"] - 300))) / 60
+                    status, col = f"Scavenging ({left:.1f} min)", WARN
                 else:
-                    elapsed = get_current_time() - gdata["recovery_start"]
-                    left = max(0, 600 - elapsed) / 60
-                    status = f"Recovering ({left:.1f} min)"
-                    color = ERROR
-                ttk.Label(info_frame, text=status, foreground=color, font=("Segoe UI", 9)).pack(anchor="w")
+                    left = max(0, 600 - (get_current_time() - gdata["recovery_start"])) / 60
+                    status, col = f"Recovering ({left:.1f} min)", ERROR
+                ttk.Label(txt, text=status, foreground=col, font=("Segoe UI", 9)).pack(anchor="w")
 
-            # Details Button
-            ttk.Button(info_frame, text="Details", 
-                      command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=6)
+            # details button
+            ttk.Button(txt, text="Details",
+                       command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=6)
 
-        # === CLOSE BUTTON ===
-        ttk.Button(main_frame, text="Close", command=win.destroy).pack(pady=10)
+        # ---------- CLOSE ----------
+        ttk.Button(main, text="Close", command=win.destroy).pack(pady=12)
 
     def show_girl_detail(self, girl):
         gdata = self.data["inventory"][girl]
