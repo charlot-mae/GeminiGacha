@@ -441,12 +441,11 @@ class GachaApp:
             if not monster_template:
                 messagebox.showerror("Battle", "Invalid monster selection.")
                 return
-            log.configure(state=tk.NORMAL)
-            log.delete("1.0", tk.END)
-            battle_log = self.simulate_battle(chosen_girls, monster_template)
-            log.insert(tk.END, battle_log)
-            log.configure(state=tk.DISABLED)
-            self.update_resources()
+            # Launch interactive turn-based battle in a new window
+            if win is not None and win.winfo_exists():
+                win.destroy()
+            battle_win = self.open_window("Battle - Fight", width=900, height=700)
+            self.start_turn_battle_gui(battle_win, chosen_girls, monster_template)
 
         ttk.Button(win, text="Start Battle", command=start_battle).pack(pady=8)
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=5)
@@ -847,6 +846,228 @@ class GachaApp:
         if girl["hp"] / girl["max_hp"] < 0.35:
             return "defend"
         return "basic"
+
+    # Interactive turn-based battle (3 girls vs 1 monster)
+    def start_turn_battle_gui(self, win, selected_girls, monster_template):
+        monster = monster_template.copy()
+        monster_max_hp = monster["hp"]
+
+        # Build team state
+        team = []
+        for girl in selected_girls:
+            gdata = self.data["inventory"][girl]
+            stats = get_girl_stats(girl, gdata["level"], self.data)
+            team.append({
+                "name": girl,
+                "stats": stats,
+                "hp": get_current_hp(girl, gdata, self.data),
+                "max_hp": stats["hp"],
+                "special_cd": 0,
+                "defending": False,
+                "shield": False,
+                "class": girls_data[girl]["class"],
+                "element": girls_data[girl]["element"]
+            })
+
+        state = {
+            "team": team,
+            "monster": monster,
+            "monster_max_hp": monster_max_hp,
+            "turn": 1,
+            "active_index": 0
+        }
+
+        # UI layout
+        header = ttk.Frame(win, padding=10, style='Card.TFrame')
+        header.pack(fill=tk.X)
+        mon_label = ttk.Label(header, text=f"{monster['name']} ({monster['element']})  HP: {int(monster['hp'])}/{monster_max_hp}")
+        mon_label.pack(side=tk.LEFT)
+
+        team_frame = ttk.Frame(win, padding=8, style='Card.TFrame')
+        team_frame.pack(fill=tk.X, padx=10, pady=(6, 0))
+
+        member_labels = []
+        for i, member in enumerate(team):
+            lbl = ttk.Label(team_frame, text=f"{member['name']}: {int(member['hp'])}/{member['max_hp']} HP")
+            lbl.grid(row=0, column=i, padx=8, sticky='w')
+            member_labels.append(lbl)
+
+        turn_label = ttk.Label(win, text=f"Turn {state['turn']} — {team[state['active_index']]['name']}'s turn", foreground=TEXT_SUB)
+        turn_label.pack(pady=(8, 4))
+
+        log = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=("Consolas", 10), bg=BG_CARD, fg=TEXT_FG, height=20)
+        log.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
+        log.config(state=tk.NORMAL)
+        log.insert(tk.END, f"Battle begins! {monster['name']} appears.\n")
+        log.config(state=tk.DISABLED)
+
+        actions = ttk.Frame(win, padding=8)
+        actions.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        btn_basic = ttk.Button(actions, text="Basic Attack")
+        btn_special = ttk.Button(actions, text="Special")
+        btn_defend = ttk.Button(actions, text="Defend")
+        btn_close = ttk.Button(actions, text="Close", command=win.destroy)
+        btn_basic.pack(side=tk.LEFT, padx=4)
+        btn_special.pack(side=tk.LEFT, padx=4)
+        btn_defend.pack(side=tk.LEFT, padx=4)
+        btn_close.pack(side=tk.RIGHT)
+
+        def append_log(text):
+            log.config(state=tk.NORMAL)
+            log.insert(tk.END, text + "\n")
+            log.see(tk.END)
+            log.config(state=tk.DISABLED)
+
+        def update_ui():
+            # Update labels
+            mon_label.config(text=f"{monster['name']} ({monster['element']})  HP: {int(monster['hp'])}/{monster_max_hp}")
+            for i, m in enumerate(team):
+                member_labels[i].config(text=f"{m['name']}: {int(max(0, m['hp']))}/{m['max_hp']} HP")
+
+            # Determine next active
+            alive_indices = [i for i, m in enumerate(team) if m['hp'] > 0]
+            if not alive_indices:
+                end_battle(False)
+                return
+            if state['active_index'] not in alive_indices:
+                state['active_index'] = alive_indices[0]
+            current = team[state['active_index']]
+            # Update turn label and buttons
+            skills = girls_data[current['name']]['skills']
+            turn_label.config(text=f"Turn {state['turn']} — {current['name']}'s turn")
+            btn_basic.config(text=skills[0], state=tk.NORMAL)
+            btn_defend.config(text=skills[2], state=tk.NORMAL)
+            # Special button respects cooldown
+            if current['special_cd'] > 0:
+                btn_special.config(text=f"{skills[1]} (CD: {current['special_cd']})", state=tk.DISABLED)
+            else:
+                btn_special.config(text=skills[1], state=tk.NORMAL)
+
+        def damage_monster(amount):
+            monster['hp'] = max(0, monster['hp'] - amount)
+
+        def girl_action(action):
+            # action: 'basic' | 'special' | 'defend'
+            current = team[state['active_index']]
+            if current['hp'] <= 0:
+                advance_turn()
+                return
+            # clear defending on action start
+            current['defending'] = False
+
+            if action == 'basic':
+                dmg = max(1, current['stats']['attack'] - monster['defense'])
+                damage_monster(dmg)
+                append_log(f"{current['name']} uses {girls_data[current['name']]['skills'][0]} → {dmg} damage")
+            elif action == 'special':
+                if current['special_cd'] > 0:
+                    # should be disabled; fallback to basic
+                    dmg = max(1, current['stats']['attack'] - monster['defense'])
+                    damage_monster(dmg)
+                    append_log(f"{current['name']}'s special on cooldown; basic for {dmg}")
+                else:
+                    if current['class'] == GirlClass.HEALER:
+                        for ally in team:
+                            if ally['hp'] > 0:
+                                ally['shield'] = True
+                        append_log(f"{current['name']} casts a protective shield on the team!")
+                        current['special_cd'] = 6
+                    else:
+                        base = int(current['stats']['attack'] * 2.0)
+                        multi = elemental_multiplier(current['element'], monster['element'])
+                        dmg = max(1, int(base * multi) - monster['defense'])
+                        damage_monster(dmg)
+                        current['special_cd'] = 6
+                        if multi > 1:
+                            append_log(f"{current['name']} uses {girls_data[current['name']]['skills'][1]}! Super effective → {dmg}")
+                        elif multi < 1:
+                            append_log(f"{current['name']} uses {girls_data[current['name']]['skills'][1]}! Not very effective → {dmg}")
+                        else:
+                            append_log(f"{current['name']} uses {girls_data[current['name']]['skills'][1]} → {dmg}")
+            else:  # defend
+                current['defending'] = True
+                append_log(f"{current['name']} braces to block the next attack")
+
+            # cooldown tick down at end of acting
+            current['special_cd'] = max(0, current['special_cd'] - 1)
+
+            if monster['hp'] <= 0:
+                end_battle(True)
+                return
+
+            advance_turn()
+
+        def advance_turn():
+            # Move to next alive member; if wrapped, monster turn then new round
+            alive_order = [i for i, m in enumerate(team) if m['hp'] > 0]
+            if not alive_order:
+                end_battle(False)
+                return
+            # find current position within alive_order
+            if state['active_index'] not in alive_order:
+                next_idx = alive_order[0]
+            else:
+                pos = alive_order.index(state['active_index'])
+                if pos + 1 < len(alive_order):
+                    next_idx = alive_order[pos + 1]
+                else:
+                    # Monster turn at end of round
+                    monster_turn()
+                    state['turn'] += 1
+                    next_idx = [i for i, m in enumerate(team) if m['hp'] > 0][0] if any(m['hp'] > 0 for m in team) else 0
+            state['active_index'] = next_idx
+            update_ui()
+
+        def monster_turn():
+            append_log("--- Monster Turn ---")
+            alive = [m for m in team if m['hp'] > 0]
+            if not alive:
+                return
+            target = random.choice(alive)
+            if target['defending']:
+                append_log(f"{monster['name']} attacks {target['name']} but it's blocked!")
+            elif target['shield']:
+                append_log(f"{monster['name']}'s attack is absorbed by {target['name']}'s shield!")
+                target['shield'] = False
+            else:
+                dmg = max(1, monster['atk'] - target['stats']['defense'])
+                target['hp'] = max(0, target['hp'] - dmg)
+                append_log(f"{monster['name']} hits {target['name']} for {dmg} ({int(target['hp'])} HP left)")
+            # clear defending after monster phase
+            for g in team:
+                g['defending'] = False
+
+        def end_battle(victory: bool):
+            # Disable action buttons
+            for b in (btn_basic, btn_special, btn_defend):
+                b.config(state=tk.DISABLED)
+            if victory:
+                append_log("")
+                append_log(f"{monster['name']} defeated! +{monster['shards']} shards")
+                self.data['shards'] += monster['shards']
+                self.handle_normal_victory()
+            else:
+                append_log("")
+                append_log("The team was defeated…")
+
+            # Apply recovery to selected girls
+            now = get_current_time()
+            for girl in selected_girls:
+                gdata = self.data['inventory'][girl]
+                final_hp = next((m['hp'] for m in team if m['name'] == girl), 1)
+                gdata['recovery_start'] = now
+                gdata['hp_at_start'] = max(1, int(final_hp))
+                append_log(f"{girl} is recovering with {int(max(1, final_hp))} HP")
+            save_game(self.data)
+            self.update_resources()
+
+        # Wire up buttons
+        btn_basic.config(command=lambda: girl_action('basic'))
+        btn_special.config(command=lambda: girl_action('special'))
+        btn_defend.config(command=lambda: girl_action('defend'))
+
+        update_ui()
 
 # ----------------------------------------------------------------------
 # LAUNCH
