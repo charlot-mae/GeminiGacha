@@ -441,11 +441,15 @@ class GachaApp:
             if not monster_template:
                 messagebox.showerror("Battle", "Invalid monster selection.")
                 return
-            # Launch interactive turn-based battle in a new window
-            if win is not None and win.winfo_exists():
-                win.destroy()
-            battle_win = self.open_window("Battle - Fight", width=900, height=700)
-            self.start_turn_battle_gui(battle_win, chosen_girls, monster_template)
+            try:
+                # Launch interactive turn-based battle in a new window
+                if win is not None and win.winfo_exists():
+                    win.destroy()
+                battle_win = self.open_window("Battle - Fight", width=900, height=700)
+                self.start_turn_battle_gui(battle_win, chosen_girls, monster_template)
+            except Exception as e:
+                messagebox.showerror("Battle Error", f"Could not start battle: {e}")
+                raise
 
         ttk.Button(win, text="Start Battle", command=start_battle).pack(pady=8)
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=5)
