@@ -121,11 +121,26 @@ class GachaApp:
     # ------------------------------------------------------------------
     def create_main_menu(self):
         self.clear_frame()
-        frame = ttk.Frame(self.root, padding=40, style='Card.TFrame')
-        frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="GEMSTONE GACHA", font=("Segoe UI", 22, "bold"), foreground=ACCENT).pack(pady=12)
-        ttk.Label(frame, text=f"Coins: {self.data['coins']} | Shards: {self.data['shards']}",
+        # === CANVAS SETUP ===
+        canvas = tk.Canvas(self.root, bg=BG_DARK, highlightthickness=0)
+        vbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas, style='Card.TFrame', padding=25)
+
+        # Dynamic resize
+        def _resize(event):
+            canvas.itemconfig(inner_id, width=event.width - 20)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.bind("<Configure>", _resize)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+
+        # === CONTENT ===
+        ttk.Label(inner, text="GEMSTONE GACHA", font=("Segoe UI", 22, "bold"), foreground=ACCENT).pack(pady=12)
+        ttk.Label(inner, text=f"Coins: {self.data['coins']} | Shards: {self.data['shards']}",
                   font=("Segoe UI", 11), foreground=TEXT_SUB).pack(pady=5)
 
         buttons = [
@@ -143,7 +158,7 @@ class GachaApp:
         ]
 
         for text, cmd in buttons:
-            ttk.Button(frame, text=text, command=cmd).pack(pady=6, fill=tk.X, padx=50)
+            ttk.Button(inner, text=text, command=cmd).pack(pady=6, fill=tk.X, padx=50)
 
     # ------------------------------------------------------------------
     # PULLS
