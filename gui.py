@@ -29,7 +29,7 @@ SUCCESS = "#66FFB3"
 WARN    = "#FFB366"
 ERROR   = "#FF6B6B"
 
-# Element colours (kept, but toned down)
+# Element colours
 ELEMENT_COLORS = {
     "Fire":  "#FF5555",
     "Water": "#5555FF",
@@ -46,7 +46,7 @@ RARITY_COLORS = {
 }
 
 # ----------------------------------------------------------------------
-# Portrait placeholder (now with theme)
+# Portrait placeholder
 # ----------------------------------------------------------------------
 def create_portrait(parent, girl_name, size=80):
     info = girls_data[girl_name]
@@ -58,7 +58,7 @@ def create_portrait(parent, girl_name, size=80):
     return canvas
 
 # ----------------------------------------------------------------------
-# GUI App – only colour changes
+# Main GUI Application
 # ----------------------------------------------------------------------
 class GachaApp:
     def __init__(self, root):
@@ -71,7 +71,6 @@ class GachaApp:
         style = ttk.Style()
         style.theme_use('clam')
 
-        # Buttons
         style.configure('TButton',
                         background=BG_BTN,
                         foreground=TEXT_FG,
@@ -81,20 +80,15 @@ class GachaApp:
                   background=[('active', BG_BTN_HOVER), ('pressed', ACCENT)],
                   foreground=[('active', TEXT_FG)])
 
-        # Labels
         style.configure('TLabel',
                         background=BG_DARK,
                         foreground=TEXT_FG,
                         font=('Segoe UI', 10))
 
-        # Frames
         style.configure('Card.TFrame',
                         background=BG_CARD,
                         relief='flat',
                         borderwidth=1)
-
-        # Scrollable text
-        style.configure('Log.TFrame', background=BG_CARD)
 
         self.data = load_save()
         self.funcs = {
@@ -110,7 +104,14 @@ class GachaApp:
         self.create_main_menu()
 
     # ------------------------------------------------------------------
-    # Main Menu – updated colours
+    # Utility: Clear window
+    # ------------------------------------------------------------------
+    def clear_frame(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+    # ------------------------------------------------------------------
+    # Main Menu
     # ------------------------------------------------------------------
     def create_main_menu(self):
         self.clear_frame()
@@ -140,8 +141,60 @@ class GachaApp:
             btn.pack(pady=6, fill=tk.X, padx=50)
 
     # ------------------------------------------------------------------
-    # Pull results – pink accent
+    # Save & Quit
     # ------------------------------------------------------------------
+    def save_and_quit(self):
+        save_game(self.data)
+        self.root.quit()
+
+    # ------------------------------------------------------------------
+    # Pulls
+    # ------------------------------------------------------------------
+    def single_pull(self):
+        if self.data["coins"] < 100:
+            messagebox.showerror("Error", "Not enough coins!")
+            return
+        self.data["coins"] -= 100
+        self.perform_pull_gui()
+
+    def ten_pull(self):
+        if self.data["coins"] < 900:
+            messagebox.showerror("Error", "Not enough coins!")
+            return
+        self.data["coins"] -= 900
+        results = []
+        for _ in range(10):
+            results.append(self.perform_pull_core())
+        self.show_pull_results(results)
+
+    def perform_pull_gui(self):
+        result = self.perform_pull_core()
+        self.show_pull_results([result])
+
+    def perform_pull_core(self):
+        self.data["pull_count"] += 1
+        self.data["rare_pity"] += 1
+        self.data["legendary_pity"] += 1
+        rarity = self.get_pull_rarity()
+        girl = self.get_girl_by_rarity(rarity)
+
+        if rarity in ["Rare", "Epic", "Legendary"]:
+            self.data["rare_pity"] = 0
+        if rarity == "Legendary":
+            self.data["legendary_pity"] = 0
+
+        if girl not in self.data["inventory"]:
+            self.data["inventory"][girl] = {
+                "level": 1, "recovery_start": None, "hp_at_start": None,
+                "attack_bonus": 0, "scavenge_end": None, "scavenge_result": None
+            }
+            new = True
+        else:
+            self.data["dupes"][girl] = self.data["dupes"].get(girl, 0) + 1
+            new = False
+
+        return {"girl": girl, "rarity": rarity, "new": new}
+
     def show_pull_results(self, results):
         win = tk.Toplevel(self.root)
         win.title("Pull Results")
@@ -166,8 +219,22 @@ class GachaApp:
 
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=12)
 
+    def get_pull_rarity(self):
+        if self.data["legendary_pity"] >= 100:
+            return "Legendary"
+        if self.data["rare_pity"] >= 50:
+            return "Rare"
+        return random.choices(
+            ["Common", "Uncommon", "Rare", "Epic", "Legendary"],
+            weights=[0.70, 0.20, 0.05, 0.04, 0.01]
+        )[0]
+
+    def get_girl_by_rarity(self, rarity):
+        candidates = [g for g, d in girls_data.items() if d["rarity"] == rarity]
+        return random.choice(candidates) if candidates else "Tama"
+
     # ------------------------------------------------------------------
-    # Inventory – dark cards
+    # Inventory
     # ------------------------------------------------------------------
     def gui_inventory(self):
         win = tk.Toplevel(self.root)
@@ -213,8 +280,65 @@ class GachaApp:
 
             ttk.Button(frame, text="Details", command=lambda g=girl: self.show_girl_detail(g)).pack(pady=4)
 
+    def show_girl_detail(self, girl):
+        gdata = self.data["inventory"][girl]
+        stats = get_girl_stats(girl, gdata["level"], self.data)
+        hp = int(get_current_hp(girl, gdata, self.data))
+        info = girls_data[girl]
+
+        win = tk.Toplevel(self.root)
+        win.title(f"{girl} - Details")
+        win.geometry("400x500")
+        win.configure(bg=BG_DARK)
+
+        create_portrait(win, girl, 100).pack(pady=10)
+
+        ttk.Label(win, text=f"{girl} Lv.{gdata['level']}", font=("Segoe UI", 14, "bold"), foreground=TEXT_FG).pack()
+        ttk.Label(win, text=f"{info['rarity']} | {info['element']} | {info['class']}", foreground=TEXT_SUB).pack()
+        ttk.Label(win, text=f"HP: {hp}/{stats['hp']}").pack()
+        ttk.Label(win, text=f"ATK: {stats['attack']} | DEF: {stats['defense']} | SPD: {stats['speed']}").pack()
+        ttk.Label(win, text=f"Skills: {', '.join(info['skills'])}").pack()
+        ttk.Label(win, text=info['catchline'], foreground="#AAAAAA", font=("Segoe UI", 9, "italic")).pack(pady=10)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
+
     # ------------------------------------------------------------------
-    # Other windows (battle log, shop, etc.) – use same BG
+    # Dupes
+    # ------------------------------------------------------------------
+    def gui_dupes(self):
+        win = tk.Toplevel(self.root)
+        win.title("Dupes")
+        win.geometry("500x500")
+        win.configure(bg=BG_DARK)
+
+        if not self.data["dupes"]:
+            ttk.Label(win, text="No dupes!", foreground=TEXT_SUB).pack(pady=20)
+            ttk.Button(win, text="Close", command=win.destroy).pack()
+            return
+
+        for girl, count in self.data["dupes"].items():
+            frame = ttk.Frame(win, padding=10, style='Card.TFrame')
+            frame.pack(fill=tk.X, pady=2, padx=10)
+
+            ttk.Label(frame, text=f"{girl}: {count}", foreground=TEXT_FG).pack(side=tk.LEFT)
+            ttk.Button(frame, text="Sell 1", command=lambda g=girl: self.sell_dupe(g, 1)).pack(side=tk.RIGHT, padx=5)
+            ttk.Button(frame, text="Sell All", command=lambda g=girl: self.sell_dupe(g, count)).pack(side=tk.RIGHT)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
+
+    def sell_dupe(self, girl, amt):
+        current = self.data["dupes"][girl]
+        sell_amt = min(amt, current)
+        self.data["coins"] += sell_amt * 100
+        self.data["dupes"][girl] -= sell_amt
+        if self.data["dupes"][girl] == 0:
+            del self.data["dupes"][girl]
+        save_game(self.data)
+        messagebox.showinfo("Sold", f"Sold {sell_amt} dupe(s) of {girl} for {sell_amt*100} coins!")
+        self.gui_dupes()
+
+    # ------------------------------------------------------------------
+    # Battle (log)
     # ------------------------------------------------------------------
     def gui_battle(self):
         import io
@@ -236,14 +360,121 @@ class GachaApp:
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=8)
 
     # ------------------------------------------------------------------
-    # All other methods (training, dupes, shop, etc.) – unchanged
-    # (just inherit the style)
+    # Training
     # ------------------------------------------------------------------
-    # ... [rest of the class – no colour changes needed] ...
+    def gui_training(self):
+        win = tk.Toplevel(self.root)
+        win.title("Training")
+        win.geometry("500x500")
+        win.configure(bg=BG_DARK)
 
-    def save_and_quit(self):
+        girls = list(self.data["inventory"].keys())
+        if not girls:
+            ttk.Label(win, text="No girls!", foreground=TEXT_SUB).pack()
+            return
+
+        for girl in girls:
+            gdata = self.data["inventory"][girl]
+            level = gdata["level"]
+            cost = 10 * (level + 1) ** 2
+            frame = ttk.Frame(win, padding=5, style='Card.TFrame')
+            frame.pack(fill=tk.X, pady=2, padx=10)
+
+            ttk.Label(frame, text=f"{girl} Lv.{level} (Cost: {cost})", foreground=TEXT_FG).pack(side=tk.LEFT)
+            ttk.Button(frame, text="Train", command=lambda g=girl: self.train_girl(g, cost)).pack(side=tk.RIGHT)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
+
+    def train_girl(self, girl, cost):
+        if self.data["shards"] < cost:
+            messagebox.showerror("Error", "Not enough shards!")
+            return
+        self.data["shards"] -= cost
+        self.data["inventory"][girl]["level"] += 1
         save_game(self.data)
-        self.root.quit()
+        messagebox.showinfo("Success", f"{girl} is now Lv.{self.data['inventory'][girl]['level']}!")
+        self.gui_training()
+
+    # ------------------------------------------------------------------
+    # Shop
+    # ------------------------------------------------------------------
+    def gui_shop(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        log = io.StringIO()
+        with redirect_stdout(log), redirect_stderr(log):
+            show_shop(self.data, girls_data, get_current_time, is_available, save_game, "gacha_save.json")
+
+        win = tk.Toplevel(self.root)
+        win.title("Shop Log")
+        win.geometry("700x500")
+        win.configure(bg=BG_DARK)
+
+        text = scrolledtext.ScrolledText(win, wrap=tk.WORD, bg=BG_CARD, fg=TEXT_FG)
+        text.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        text.insert(tk.END, log.getvalue())
+        text.config(state=tk.DISABLED)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=5)
+
+    # ------------------------------------------------------------------
+    # Scavenging
+    # ------------------------------------------------------------------
+    def gui_scavenging(self):
+        win = tk.Toplevel(self.root)
+        win.title("Scavenging")
+        win.geometry("500x400")
+        win.configure(bg=BG_DARK)
+
+        avail = [g for g, gd in self.data["inventory"].items() if is_available(gd)]
+        if not avail:
+            ttk.Label(win, text="No girls available!", foreground=TEXT_SUB).pack(pady=20)
+            ttk.Button(win, text="Close", command=win.destroy).pack()
+            return
+
+        for girl in avail:
+            frame = ttk.Frame(win, padding=5, style='Card.TFrame')
+            frame.pack(fill=tk.X, pady=2, padx=10)
+            ttk.Label(frame, text=f"{girl} Lv.{self.data['inventory'][girl]['level']}", foreground=TEXT_FG).pack(side=tk.LEFT)
+            ttk.Button(frame, text="Send", command=lambda g=girl: self.send_scavenge(g)).pack(side=tk.RIGHT)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=10)
+
+    def send_scavenge(self, girl):
+        now = get_current_time()
+        self.data["inventory"][girl]["scavenge_end"] = now + 300
+        self.data["inventory"][girl]["scavenge_result"] = None
+        save_game(self.data)
+        messagebox.showinfo("Sent", f"{girl} sent scavenging for 5 minutes!")
+        self.gui_scavenging()
+
+    # ------------------------------------------------------------------
+    # Healing
+    # ------------------------------------------------------------------
+    def gui_healing(self):
+        import io
+        from contextlib import redirect_stdout
+        log = io.StringIO()
+        with redirect_stdout(log):
+            healing_session(self.data)
+
+        win = tk.Toplevel(self.root)
+        win.title("Healing Session")
+        win.geometry("600x400")
+        win.configure(bg=BG_DARK)
+
+        text = scrolledtext.ScrolledText(win, wrap=tk.WORD, bg=BG_CARD, fg=TEXT_FG)
+        text.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        text.insert(tk.END, log.getvalue())
+        text.config(state=tk.DISABLED)
+
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=5)
+
+    # ------------------------------------------------------------------
+    # Boss Cave
+    # ------------------------------------------------------------------
+    def gui_boss(self):
+        boss_menu(self.data, self.funcs)
 
 # ----------------------------------------------------------------------
 # Launch
