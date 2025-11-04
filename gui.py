@@ -236,44 +236,53 @@ class GachaApp:
     # ------------------------------------------------------------------
     # Inventory
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Inventory – FINAL FIXED: No blank space, full width, scrollable
+    # ------------------------------------------------------------------
     def gui_inventory(self):
         win = tk.Toplevel(self.root)
         win.title("Inventory")
         win.geometry("820x620")
         win.configure(bg=BG_DARK)
-        ttk.Label(main_frame, text=f"Total Girls: {len(self.data['inventory'])}", 
-          foreground=ACCENT, font=("Segoe UI", 11)).pack(anchor="w", pady=(0,10))
 
-        # Main container with padding
+        # === MAIN CONTAINER ===
         main_frame = ttk.Frame(win, padding=15)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Canvas + Scrollbar
+        # === CANVAS + SCROLLBAR ===
         canvas = tk.Canvas(main_frame, bg=BG_DARK, highlightthickness=0)
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable = ttk.Frame(canvas, style='Card.TFrame')
 
+        # Bind resize
         scrollable.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        canvas.create_window((0, 0), window=scrollable, anchor="nw", width=760)  # FIXED: set width
+        # Create window with dynamic width
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Populate girls
+        # === RESIZE CANVAS ON WINDOW RESIZE ===
+        def _on_canvas_configure(event):
+            canvas_width = event.width
+            canvas.itemconfig(canvas.find_withtag("inner_window")[0], width=canvas_width - 20)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        # === POPULATE GIRLS ===
         for girl, gdata in self.data["inventory"].items():
             frame = ttk.Frame(scrollable, padding=12, style='Card.TFrame')
-            frame.pack(fill=tk.X, pady=6, padx=8)  # Full width
+            frame.pack(fill=tk.X, pady=6, padx=10)
 
-            # Left: Portrait
+            # Portrait
             portrait = create_portrait(frame, girl, 70)
-            portrait.pack(side=tk.LEFT, padx=10)
+            portrait.pack(side=tk.LEFT, padx=(5, 15))
 
-            # Right: Info (vertical stack)
+            # Info column
             info_frame = ttk.Frame(frame)
             info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -289,15 +298,15 @@ class GachaApp:
             ttk.Label(info_frame, text=f"{info['rarity']} | {info['element']} | {info['class']}", 
                      foreground=TEXT_SUB, font=("Segoe UI", 10)).pack(anchor="w")
             
-            # HP
-            hp_text = f"HP: {hp}/{stats['hp']}"
-            if hp <= stats['hp'] * 0.3:
+            # HP with color
+            hp_ratio = hp / stats['hp']
+            if hp_ratio <= 0.3:
                 hp_color = ERROR
-            elif hp <= stats['hp'] * 0.7:
+            elif hp_ratio <= 0.7:
                 hp_color = WARN
             else:
                 hp_color = SUCCESS
-            ttk.Label(info_frame, text=hp_text, foreground=hp_color).pack(anchor="w")
+            ttk.Label(info_frame, text=f"HP: {hp}/{stats['hp']}", foreground=hp_color).pack(anchor="w")
 
             # Stats
             ttk.Label(info_frame, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}", 
@@ -323,9 +332,9 @@ class GachaApp:
 
             # Details Button
             ttk.Button(info_frame, text="Details", 
-                      command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=4)
+                      command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=6)
 
-        # Optional: Add a "Close" button at bottom
+        # === CLOSE BUTTON ===
         ttk.Button(main_frame, text="Close", command=win.destroy).pack(pady=10)
 
     def show_girl_detail(self, girl):
