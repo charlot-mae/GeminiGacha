@@ -401,8 +401,15 @@ class GachaApp:
         win.configure(bg=BG_DARK)
 
         ttk.Label(win, text="Select up to 3 girls", foreground=TEXT_SUB).pack(pady=5)
-        listbox = tk.Listbox(win, selectmode=tk.MULTIPLE, bg=BG_CARD, fg=TEXT_FG,
-                             selectbackground=ACCENT, activestyle='dotbox')
+        listbox = tk.Listbox(
+            win,
+            selectmode=tk.MULTIPLE,
+            bg=BG_CARD,
+            fg=TEXT_FG,
+            selectbackground=ACCENT,
+            activestyle='dotbox',
+            exportselection=False
+        )
         for girl in available:
             level = self.data["inventory"][girl]["level"]
             elem = girls_data[girl]["element"]
@@ -698,7 +705,15 @@ class GachaApp:
 
         ttk.Label(dialog, text=prompt, wraplength=320, foreground=TEXT_FG).pack(pady=12, padx=12)
 
-        listbox = tk.Listbox(dialog, bg=BG_CARD, fg=TEXT_FG, selectbackground=ACCENT, activestyle='dotbox', height=min(10, len(options)))
+        listbox = tk.Listbox(
+            dialog,
+            bg=BG_CARD,
+            fg=TEXT_FG,
+            selectbackground=ACCENT,
+            activestyle='dotbox',
+            height=min(10, len(options)),
+            exportselection=False
+        )
         for label, _ in options:
             listbox.insert(tk.END, label)
         listbox.pack(padx=12, pady=8, fill=tk.BOTH, expand=True)
