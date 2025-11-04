@@ -241,44 +241,92 @@ class GachaApp:
         win.title("Inventory")
         win.geometry("820x620")
         win.configure(bg=BG_DARK)
+        ttk.Label(main_frame, text=f"Total Girls: {len(self.data['inventory'])}", 
+          foreground=ACCENT, font=("Segoe UI", 11)).pack(anchor="w", pady=(0,10))
 
-        canvas = tk.Canvas(win, bg=BG_DARK, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+        # Main container with padding
+        main_frame = ttk.Frame(win, padding=15)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Canvas + Scrollbar
+        canvas = tk.Canvas(main_frame, bg=BG_DARK, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable = ttk.Frame(canvas, style='Card.TFrame')
 
-        scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable, anchor="nw", width=760)  # FIXED: set width
         canvas.configure(yscrollcommand=scrollbar.set)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # Populate girls
         for girl, gdata in self.data["inventory"].items():
             frame = ttk.Frame(scrollable, padding=12, style='Card.TFrame')
-            frame.pack(fill=tk.X, pady=5, padx=10)
+            frame.pack(fill=tk.X, pady=6, padx=8)  # Full width
 
-            portrait = create_portrait(frame, girl, 60)
+            # Left: Portrait
+            portrait = create_portrait(frame, girl, 70)
             portrait.pack(side=tk.LEFT, padx=10)
+
+            # Right: Info (vertical stack)
+            info_frame = ttk.Frame(frame)
+            info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
             stats = get_girl_stats(girl, gdata["level"], self.data)
             hp = int(get_current_hp(girl, gdata, self.data))
             info = girls_data[girl]
 
-            ttk.Label(frame, text=f"{girl} Lv.{gdata['level']}", font=("Segoe UI", 12, "bold"), foreground=TEXT_FG).pack(anchor="w")
-            ttk.Label(frame, text=f"{info['rarity']} | {info['element']} | {info['class']}", foreground=TEXT_SUB).pack(anchor="w")
-            ttk.Label(frame, text=f"HP: {hp}/{stats['hp']}").pack(anchor="w")
-            ttk.Label(frame, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}").pack(anchor="w")
-            ttk.Label(frame, text=info['catchline'], foreground="#999999", font=("Segoe UI", 9, "italic")).pack(anchor="w")
+            # Name + Level
+            ttk.Label(info_frame, text=f"{girl} Lv.{gdata['level']}", 
+                     font=("Segoe UI", 13, "bold"), foreground=TEXT_FG).pack(anchor="w")
+            
+            # Rarity | Element | Class
+            ttk.Label(info_frame, text=f"{info['rarity']} | {info['element']} | {info['class']}", 
+                     foreground=TEXT_SUB, font=("Segoe UI", 10)).pack(anchor="w")
+            
+            # HP
+            hp_text = f"HP: {hp}/{stats['hp']}"
+            if hp <= stats['hp'] * 0.3:
+                hp_color = ERROR
+            elif hp <= stats['hp'] * 0.7:
+                hp_color = WARN
+            else:
+                hp_color = SUCCESS
+            ttk.Label(info_frame, text=hp_text, foreground=hp_color).pack(anchor="w")
 
+            # Stats
+            ttk.Label(info_frame, text=f"ATK {stats['attack']} | DEF {stats['defense']} | SPD {stats['speed']}", 
+                     foreground=TEXT_SUB).pack(anchor="w")
+
+            # Catchline
+            ttk.Label(info_frame, text=info['catchline'], 
+                     foreground="#999999", font=("Segoe UI", 9, "italic")).pack(anchor="w")
+
+            # Status
             if not is_available(gdata):
                 if gdata.get("scavenge_end"):
-                    left = max(0, 300 - (get_current_time() - (gdata["scavenge_end"] - 300))) / 60
-                    ttk.Label(frame, text=f"Scavenging ({left:.1f} min)", foreground=WARN).pack()
+                    elapsed = get_current_time() - (gdata["scavenge_end"] - 300)
+                    left = max(0, 300 - elapsed) / 60
+                    status = f"Scavenging ({left:.1f} min)"
+                    color = WARN
                 else:
-                    left = max(0, 600 - (get_current_time() - gdata["recovery_start"])) / 60
-                    ttk.Label(frame, text=f"Recovering ({left:.1f} min)", foreground=ERROR).pack()
+                    elapsed = get_current_time() - gdata["recovery_start"]
+                    left = max(0, 600 - elapsed) / 60
+                    status = f"Recovering ({left:.1f} min)"
+                    color = ERROR
+                ttk.Label(info_frame, text=status, foreground=color, font=("Segoe UI", 9)).pack(anchor="w")
 
-            ttk.Button(frame, text="Details", command=lambda g=girl: self.show_girl_detail(g)).pack(pady=4)
+            # Details Button
+            ttk.Button(info_frame, text="Details", 
+                      command=lambda g=girl: self.show_girl_detail(g)).pack(anchor="w", pady=4)
+
+        # Optional: Add a "Close" button at bottom
+        ttk.Button(main_frame, text="Close", command=win.destroy).pack(pady=10)
 
     def show_girl_detail(self, girl):
         gdata = self.data["inventory"][girl]
