@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import random
+import os
+import json
 from bosses import BOSS_POOL
 
 
@@ -57,6 +59,7 @@ class GachaApp:
         self.root.configure(bg=BG_DARK)
         self.root.geometry("1000x680")
         self.root.minsize(860, 560)
+        self.root.protocol("WM_DELETE_WINDOW", self._quit)
 
         style = ttk.Style()
         try:
@@ -77,6 +80,8 @@ class GachaApp:
         self._build_main()
         # periodic tick to process scavenging results
         self.root.after(3000, self._tick)
+        # periodic header refresh to reflect unsaved status
+        self.root.after(2000, self._refresh_header_loop)
 
     def _element_badge(self, parent, element, size=14, bg=None):
         bg = bg or BG_CARD
@@ -191,25 +196,68 @@ class GachaApp:
         ttk.Button(box, text="Close", command=win.destroy).pack(pady=8)
 
     def _status_text(self):
-        return (
+        txt = (
             f"Coins: {self.data.get('coins', 0)} | "
             f"Shards: {self.data.get('shards', 0)} | "
             f"Pulls: {self.data.get('pull_count', 0)} | "
             f"Pity: Rare {self.data.get('rare_pity', 0)}/50, "
             f"Legendary {self.data.get('legendary_pity', 0)}/100"
         )
+        try:
+            if self._has_unsaved_changes():
+                txt += "  • unsaved"
+        except Exception:
+            pass
+        return txt
 
     def _refresh_header(self):
         if self.header is not None:
             self.header.configure(text=self._status_text())
 
+    def _refresh_header_loop(self):
+        try:
+            self._refresh_header()
+        finally:
+            self.root.after(2000, self._refresh_header_loop)
+
     def _save(self):
         self.save_game(self.data)
         messagebox.showinfo("Saved", "Progress saved.")
+        self._refresh_header()
 
     def _quit(self):
-        self.save_game(self.data)
-        self.root.destroy()
+        try:
+            has_changes = self._has_unsaved_changes()
+        except Exception:
+            has_changes = True
+
+        if has_changes:
+            resp = messagebox.askyesnocancel(
+                "Quit",
+                "You have unsaved changes. Save before quitting?",
+                icon=messagebox.WARNING,
+                default=messagebox.YES,
+            )
+            if resp is None:
+                return
+            if resp is True:
+                self.save_game(self.data)
+                self.root.destroy()
+            else:
+                self.root.destroy()
+        else:
+            self.root.destroy()
+
+    def _has_unsaved_changes(self):
+        path = "gacha_save.json"
+        if not os.path.exists(path):
+            return True
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                on_disk = json.load(f)
+        except Exception:
+            return True
+        return on_disk != self.data
 
     # Drawing helpers
     def _portrait(self, parent, girl_name, size=64):
