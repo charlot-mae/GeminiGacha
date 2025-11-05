@@ -351,15 +351,31 @@ def show_dupes(data):
         print("\n=== DUPES ===")
         dupe_list = list(data["dupes"].items())
         for i, (girl, count) in enumerate(dupe_list, 1):
-            print(f"{i}. {girl}: {count}")
-        print("\nActions: 'number amount' to sell, 'a number' to ascend that girl, or 'back': ", end="")
+            inv = data.get("inventory", {})
+            if girl in inv:
+                stars = inv[girl].get("stars", 0)
+                if stars >= 5:
+                    tag = "max ★"
+                else:
+                    tag = f"{stars}★, next cost {stars + 1}"
+            else:
+                tag = "not owned"
+            print(f"{i}. {girl}: {count} ({tag})")
+        print("\nActions: 'number amount' to sell, 'a number [steps]' to ascend, or 'back': ", end="")
         choice = input().strip()
         if choice.lower() == 'back':
             break
         try:
             if choice.lower().startswith('a '):
-                # Ascend command
-                idx = int(choice.split()[1])
+                # Ascend command: a <index> [steps]
+                parts = choice.split()
+                if len(parts) < 2:
+                    print("Invalid input! Use 'a <index> [steps]'")
+                    continue
+                idx = int(parts[1])
+                steps_req = int(parts[2]) if len(parts) >= 3 else 1
+                if steps_req <= 0:
+                    steps_req = 1
                 if 1 <= idx <= len(dupe_list):
                     girl, current = dupe_list[idx - 1]
                     if girl not in data["inventory"]:
@@ -369,15 +385,27 @@ def show_dupes(data):
                     if stars >= 5:
                         print(f"{girl} is at max stars.")
                         continue
-                    cost = stars + 1
-                    if current < cost:
-                        print(f"Need {cost} dupes to ascend (have {current}).")
+                    performed = 0
+                    consumed = 0
+                    new_stars = stars
+                    while performed < steps_req and new_stars < 5:
+                        step_cost = new_stars + 1
+                        if current - consumed < step_cost:
+                            break
+                        consumed += step_cost
+                        new_stars += 1
+                        performed += 1
+                    if performed == 0:
+                        need = stars + 1
+                        print(f"Need {need} dupes to ascend (have {current}).")
                         continue
-                    data["inventory"][girl]["stars"] = stars + 1
-                    data["dupes"][girl] = current - cost
-                    if data["dupes"][girl] <= 0:
+                    data["inventory"][girl]["stars"] = new_stars
+                    remaining = current - consumed
+                    if remaining <= 0:
                         del data["dupes"][girl]
-                    print(f"Ascended {girl} to {stars+1}⭐ using {cost} dupes!")
+                    else:
+                        data["dupes"][girl] = remaining
+                    print(f"Ascended {girl} by {performed}★ to {new_stars}★ using {consumed} dupes.")
                     save_game(data)
                 else:
                     print("Invalid number!")
