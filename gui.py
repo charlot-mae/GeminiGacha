@@ -490,6 +490,11 @@ class GachaApp:
                 messagebox.showerror("Invalid", f"Enter 1..{current}.")
                 return
             # 100 coins per dupe (same as CLI)
+            if not messagebox.askyesno(
+                "Confirm Sell",
+                f"Sell {amt} {name} dupe(s) for {amt * 100} coins?",
+            ):
+                return
             self.data["coins"] = self.data.get("coins", 0) + amt * 100
             new_count = current - amt
             if new_count <= 0:

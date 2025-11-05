@@ -132,8 +132,13 @@ def cheat_menu():
         choice = input("Choose: ").strip()
         
         if choice == '1':
-            reset_saves()
-            data = load_save()
+            print("\nWARNING: This will permanently erase your save file.")
+            confirm = input("Type ERASE to confirm (or anything else to cancel): ").strip()
+            if confirm == 'ERASE':
+                reset_saves()
+                data = load_save()
+            else:
+                print("Canceled. Save not erased.")
         elif choice == '2':
             ten_pull(data)
         elif choice == '3':

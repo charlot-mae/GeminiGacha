@@ -424,6 +424,10 @@ def show_dupes(data):
                     if amt > current:
                         print(f"Only {current} available!")
                         continue
+                    confirm = input(f"Confirm sell {amt} {girl} dupe(s) for {amt*100} coins? (y/N): ").strip().lower()
+                    if confirm not in ("y", "yes"):
+                        print("Canceled.")
+                        continue
                     data["coins"] += amt * 100
                     data["dupes"][girl] -= amt
                     if data["dupes"][girl] == 0:
