@@ -78,6 +78,18 @@ class GachaApp:
         # periodic tick to process scavenging results
         self.root.after(3000, self._tick)
 
+    def _element_badge(self, parent, element, size=14, bg=None):
+        bg = bg or BG_CARD
+        color = ELEMENT_COLORS.get(element, "#666666")
+        cv = tk.Canvas(parent, width=size, height=size, bg=bg, highlightthickness=0)
+        cv.create_oval(1, 1, size - 1, size - 1, fill=color, outline="#000000", width=1)
+        if size >= 14:
+            try:
+                cv.create_text(size // 2, size // 2, text=element[0], fill="white", font=("Segoe UI", 8, "bold"))
+            except Exception:
+                pass
+        return cv
+
     def _ensure_boss_state(self):
         self.data.setdefault("boss_defeat_counter", 0)
         self.data.setdefault("cave_unlocked", False)
@@ -134,6 +146,49 @@ class GachaApp:
             foreground=TEXT_SUB,
         )
         hint.pack(anchor="w", pady=(16, 0))
+
+        ttk.Button(container, text="Element Guide", command=self.open_element_guide).pack(anchor="w", pady=(8, 0))
+
+    def open_element_guide(self):
+        win = tk.Toplevel(self.root)
+        win.title("Element Guide")
+        win.configure(bg=BG_DARK)
+        win.geometry("520x340")
+
+        box = ttk.Frame(win, style="Card.TFrame", padding=12)
+        box.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(box, text="Elemental Effectiveness", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(box, text="Damage multipliers by attacker vs defender.", foreground=TEXT_SUB).pack(anchor="w")
+
+        grid = ttk.Frame(box, style="Card.TFrame")
+        grid.pack(pady=8)
+
+        elements = list(ELEMENT_COLORS.keys())
+        header_font = ("Segoe UI", 10, "bold")
+
+        ttk.Label(grid, text="Att \\ Def", font=header_font).grid(row=0, column=0, padx=6, pady=4)
+        for j, de in enumerate(elements, start=1):
+            ttk.Label(grid, text=de, font=header_font).grid(row=0, column=j, padx=6, pady=4)
+
+        for i, at in enumerate(elements, start=1):
+            ttk.Label(grid, text=at, font=header_font).grid(row=i, column=0, padx=6, pady=4)
+            for j, de in enumerate(elements, start=1):
+                multi = self.elemental_multiplier(at, de) or 1.0
+                col = SUCCESS if multi > 1 else WARN if multi < 1 else TEXT_SUB
+                ttk.Label(grid, text=f"{multi:.1f}x", foreground=col).grid(row=i, column=j, padx=6, pady=4)
+
+        ttk.Label(
+            box,
+            text=(
+                "Super effective > 1.0x  |  Not very effective < 1.0x.\n"
+                "Applies to basic attacks and relevant specials for both sides."
+            ),
+            foreground=TEXT_SUB,
+            wraplength=480,
+        ).pack(anchor="w", pady=(8, 0))
+
+        ttk.Button(box, text="Close", command=win.destroy).pack(pady=8)
 
     def _status_text(self):
         return (
@@ -285,9 +340,10 @@ class GachaApp:
                 text=f"{res['girl']} ({res['rarity']})",
                 font=("Segoe UI", 12, "bold"),
             ).pack(anchor="w")
-            ttk.Label(
-                txt, text=f"{info['element']} | {info['class']}", foreground=TEXT_SUB
-            ).pack(anchor="w")
+            line = ttk.Frame(txt, style="Card.TFrame")
+            line.pack(anchor="w")
+            self._element_badge(line, info['element'], size=14, bg=BG_CARD).pack(side=tk.LEFT, padx=(0,6))
+            ttk.Label(line, text=f"{info['element']} | {info['class']}", foreground=TEXT_SUB).pack(side=tk.LEFT)
             ttk.Label(
                 txt,
                 text=info["catchline"],
@@ -354,12 +410,15 @@ class GachaApp:
                 fg=TEXT_FG,
                 bg=BG_CARD,
             ).pack(anchor="w")
+            row_meta = tk.Frame(txt, bg=BG_CARD)
+            row_meta.pack(anchor="w")
+            self._element_badge(row_meta, info['element'], size=14, bg=BG_CARD).pack(side=tk.LEFT, padx=(0,6))
             tk.Label(
-                txt,
+                row_meta,
                 text=f"{info['rarity']} | {info['element']} | {info['class']}",
                 fg=TEXT_SUB,
                 bg=BG_CARD,
-            ).pack(anchor="w")
+            ).pack(side=tk.LEFT)
 
             hp_ratio = hp_now / max(1, stats["hp"])
             hp_col = ERROR if hp_ratio <= 0.3 else WARN if hp_ratio <= 0.7 else SUCCESS
@@ -758,9 +817,15 @@ class GachaApp:
                     for t in team:
                         t["shield"] = True
                     writeln(f"{g['name']} casts group shield!")
-                dmg = max(1, g["stats"]["attack"] - monster["defense"])
+                base = g["stats"]["attack"]
+                multi = self.elemental_multiplier(
+                    self.girls_data[g["name"]]["element"],
+                    monster["element"],
+                ) or 1.0
+                dmg = max(1, int(base * multi) - monster["defense"])
                 mon_hp -= dmg
-                writeln(f"{g['name']} hits for {dmg}")
+                note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                writeln(f"{g['name']} hits for {dmg}{note}")
                 if mon_hp <= 0:
                     break
             if mon_hp <= 0:
@@ -774,9 +839,14 @@ class GachaApp:
                 writeln(f"{monster['name']}'s attack is absorbed by shield on {target['name']}")
                 target["shield"] = False
             else:
-                mdmg = max(1, monster["atk"] - target["stats"]["defense"])
+                # Apply elemental multiplier (monster element vs girl's element)
+                m_elem = monster.get("element")
+                g_elem = self.girls_data[target["name"]]["element"]
+                multi = self.elemental_multiplier(m_elem, g_elem) or 1.0
+                mdmg = max(1, int(monster["atk"] * multi) - target["stats"]["defense"])
                 target["hp"] -= mdmg
-                writeln(f"{monster['name']} hits {target['name']} for {mdmg} (HP {int(target['hp'])})")
+                note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                writeln(f"{monster['name']} hits {target['name']} for {mdmg}{note} (HP {int(target['hp'])})")
 
         if mon_hp <= 0:
             reward = monster.get("shards", 0)
@@ -828,8 +898,10 @@ class GachaApp:
 
         top = ttk.Frame(win, style="Card.TFrame", padding=10)
         top.pack(fill=tk.X)
+        mon_icon = self._element_badge(top, monster.get("element", ""), size=14, bg=BG_DARK)
+        mon_icon.pack(side=tk.LEFT, padx=(0,6))
         mon_label = ttk.Label(top, text="", font=("Segoe UI", 12, "bold"))
-        mon_label.pack(anchor="w")
+        mon_label.pack(side=tk.LEFT, anchor="w")
 
         team_frame = ttk.Frame(win, style="Card.TFrame", padding=8)
         team_frame.pack(fill=tk.X)
@@ -860,7 +932,10 @@ class GachaApp:
                 child.destroy()
             for g in team:
                 color = SUCCESS if g["hp"] > 0 else ERROR
-                ttk.Label(team_frame, text=f"{g['name']} HP {int(g['hp'])}/{g['max_hp']}  CD {g['special_cd']}  {'SHIELD' if g['shield'] else ''}", foreground=color).pack(anchor="w")
+                row = ttk.Frame(team_frame, style="Card.TFrame")
+                row.pack(anchor="w", fill=tk.X)
+                self._element_badge(row, self.girls_data[g['name']]['element'], size=12, bg=BG_DARK).pack(side=tk.LEFT, padx=(0,6))
+                ttk.Label(row, text=f"{g['name']} HP {int(g['hp'])}/{g['max_hp']}  CD {g['special_cd']}  {'SHIELD' if g['shield'] else ''}", foreground=color).pack(side=tk.LEFT)
 
         def next_turn_or_monster():
             nonlocal turn_idx, turn_count, mon_hp
@@ -895,9 +970,15 @@ class GachaApp:
             nonlocal mon_hp, turn_idx, turn_count
             g = team[turn_idx]
             if kind == "basic":
-                dmg = max(1, g["stats"]["attack"] - monster["defense"])
+                base = g["stats"]["attack"]
+                multi = self.elemental_multiplier(
+                    self.girls_data[g["name"]]["element"],
+                    monster["element"],
+                ) or 1.0
+                dmg = max(1, int(base * multi) - monster["defense"])
                 mon_hp -= dmg
-                writeln(f"{g['name']} uses Basic Attack for {dmg}")
+                note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                writeln(f"{g['name']} uses Basic Attack for {dmg}{note}")
             elif kind == "special":
                 if self.girls_data[g["name"]]["class"] == self.CLASS_HEALER:
                     for t in team:
@@ -953,9 +1034,14 @@ class GachaApp:
                 t["shield"] = False
                 writeln(f"{monster['name']}'s attack is absorbed by shield on {t['name']}")
             else:
-                mdmg = max(1, monster["atk"] - t["stats"]["defense"])
+                # Apply elemental multiplier (monster element vs girl's element)
+                m_elem = monster.get("element")
+                g_elem = self.girls_data[t["name"]]["element"]
+                multi = self.elemental_multiplier(m_elem, g_elem) or 1.0
+                mdmg = max(1, int(monster["atk"] * multi) - t["stats"]["defense"])
                 t["hp"] -= mdmg
-                writeln(f"{monster['name']} hits {t['name']} for {mdmg}")
+                note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                writeln(f"{monster['name']} hits {t['name']} for {mdmg}{note}")
             # after monster acts, next player turn is first alive from start
             # move pointer to first alive
             for i in range(len(team)):

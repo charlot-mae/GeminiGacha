@@ -191,9 +191,14 @@ def _run_boss_turn(state, data, funcs):
                 girl["shield"] = False
 
             if idx == 0:                     # BASIC
-                dmg = max(1, girl["stats"]["attack"] - boss["defense"])
+                base = girl["stats"]["attack"]
+                multi = funcs["elemental_multiplier"](
+                    funcs["girls_data"][girl["name"]]["element"], boss["element"]
+                ) or 1.0
+                dmg = max(1, int(base * multi) - boss["defense"])
                 boss["hp"] -= dmg
-                print(f"{girl['name']} deals {dmg} damage!")
+                note = " (SUPER EFFECTIVE)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                print(f"{girl['name']} deals {dmg} damage!{note}")
             elif idx == 1:                   # SPECIAL
                 cls = funcs["girls_data"][girl["name"]]["class"]
                 if cls == "Healer":
@@ -237,9 +242,11 @@ def _run_boss_turn(state, data, funcs):
                     print(f"  → {g['name']}'s shield absorbed!")
                     g["shield"] = False
                     continue
-                dmg = max(1, boss["atk"] * 2 - g["stats"]["defense"])
+                multi = funcs["elemental_multiplier"](boss["element"], funcs["girls_data"][g["name"]]["element"]) or 1.0
+                dmg = max(1, int(boss["atk"] * 2 * multi) - g["stats"]["defense"]) 
                 g["hp"] -= dmg
-                print(f"  → {g['name']} takes {dmg} ({int(g['hp'])} left)")
+                note = " (SUPER EFFECTIVE)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                print(f"  → {g['name']} takes {dmg}{note} ({int(g['hp'])} left)")
             boss["special_cd"] = 3
         else:
             alive = [g for g in team if g["hp"] > 0]
@@ -251,9 +258,11 @@ def _run_boss_turn(state, data, funcs):
                     print(f"{boss['name']} hits {tgt['name']}'s shield → absorbed")
                     tgt["shield"] = False
                 else:
-                    dmg = max(1, boss["atk"] - tgt["stats"]["defense"])
+                    multi = funcs["elemental_multiplier"](boss["element"], funcs["girls_data"][tgt["name"]]["element"]) or 1.0
+                    dmg = max(1, int(boss["atk"] * multi) - tgt["stats"]["defense"])
                     tgt["hp"] -= dmg
-                    print(f"{boss['name']} hits {tgt['name']} for {dmg} ({int(tgt['hp'])} left)")
+                    note = " (SUPER EFFECTIVE)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                    print(f"{boss['name']} hits {tgt['name']} for {dmg}{note} ({int(tgt['hp'])} left)")
 
         # SAVE AFTER EACH ROUND
         data["boss_fight_state"] = state

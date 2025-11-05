@@ -464,9 +464,16 @@ def player_turn(girl, girl_stats, skills, monster, mon_hp, girl_hp, girl_max_hp,
     defended = False
     new_special_cd = special_cd
     if skill_idx == 0:
-        damage = max(1, girl_stats["attack"] - monster["defense"])
+        base = girl_stats["attack"]
+        multi = elemental_multiplier(girls_data[girl]["element"], monster["element"])
+        damage = max(1, int(base * multi) - monster["defense"])
         mon_hp -= damage
-        print(f"{girl} uses {skill}! Deals {damage} damage!")
+        if multi > 1.0:
+            print(f"{girl} uses {skill}! Super effective! {damage} damage!")
+        elif multi < 1.0:
+            print(f"{girl} uses {skill}! Not very effective... {damage} damage!")
+        else:
+            print(f"{girl} uses {skill}! Deals {damage} damage!")
     elif skill_idx == 1:
         base_damage = max(1, int(girl_stats["attack"] * 2.0) - monster["defense"])
         multi = elemental_multiplier(girls_data[girl]["element"], monster["element"])
@@ -490,9 +497,15 @@ def monster_turn(girl, girl_stats, monster, girl_hp, block_next_attack):
     if block_next_attack:
         print(f"{monster['name']}'s attack blocked!")
         return girl_hp, False
-    mon_damage = max(1, monster["atk"] - girl_stats["defense"])
+    multi = elemental_multiplier(monster["element"], girls_data[girl]["element"]) if monster.get("element") else 1.0
+    mon_damage = max(1, int(monster["atk"] * multi) - girl_stats["defense"])
     girl_hp -= mon_damage
-    print(f"{monster['name']} attacks! {mon_damage} damage!")
+    if multi > 1.0:
+        print(f"{monster['name']} attacks! Super effective! {mon_damage} damage!")
+    elif multi < 1.0:
+        print(f"{monster['name']} attacks! Not very effective... {mon_damage} damage!")
+    else:
+        print(f"{monster['name']} attacks! {mon_damage} damage!")
     return girl_hp, False
 
 def turn_based_battle(data):
@@ -593,9 +606,16 @@ def turn_based_battle(data):
                 girl["shield"] = False
             
             if skill_idx == 0:  # Basic Attack
-                damage = max(1, girl["stats"]["attack"] - monster["defense"])
+                base = girl["stats"]["attack"]
+                multi = elemental_multiplier(girls_data[girl["name"]]["element"], monster["element"])
+                damage = max(1, int(base * multi) - monster["defense"])
                 mon_hp -= damage
-                print(f"{girl['name']} deals {damage} damage!")
+                if multi > 1:
+                    print(f"{girl['name']} super effective! {damage} damage!")
+                elif multi < 1:
+                    print(f"{girl['name']} not very effective... {damage} damage!")
+                else:
+                    print(f"{girl['name']} deals {damage} damage!")
             elif skill_idx == 1:  # Special
                 if girls_data[girl["name"]]["class"] == GirlClass.HEALER and skill_idx == 1:
                     # Group shield
@@ -637,9 +657,16 @@ def turn_based_battle(data):
                 print(f"{monster['name']} attacks {target['name']} but shield absorbs it!")
                 target["shield"] = False
             else:
-                damage = max(1, monster["atk"] - target["stats"]["defense"])
+                multi = elemental_multiplier(monster["element"], girls_data[target["name"]]["element"]) if monster.get("element") else 1.0
+                damage = max(1, int(monster["atk"] * multi) - target["stats"]["defense"])
                 target["hp"] -= damage
-                print(f"{monster['name']} hits {target['name']} for {damage}! ({int(target['hp'])} HP left)")
+                if multi > 1:
+                    note = " Super effective!"
+                elif multi < 1:
+                    note = " Not very effective..."
+                else:
+                    note = ""
+                print(f"{monster['name']} hits {target['name']} for {damage}!{note} ({int(target['hp'])} HP left)")
     
     # Results
     if mon_hp <= 0:
