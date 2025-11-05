@@ -160,9 +160,11 @@ def load_save():
     for girl in list(data["inventory"].keys()):
         gdata = data["inventory"][girl]
         if isinstance(gdata, int):
-            data["inventory"][girl] = {"level": gdata, "recovery_start": None, "hp_at_start": None, "attack_bonus": 0}
+            data["inventory"][girl] = {"level": gdata, "recovery_start": None, "hp_at_start": None, "attack_bonus": 0, "stars": 0}
         if "attack_bonus" not in gdata:
             gdata["attack_bonus"] = 0
+        if "stars" not in gdata:
+            gdata["stars"] = 0
         if "scavenge_end" not in gdata:
             gdata["scavenge_end"] = None
         if "scavenge_result" not in gdata:
@@ -209,7 +211,7 @@ def perform_pull(data, show_output=True):
         data["legendary_pity"] = 0
     
     if girl not in data["inventory"]:
-        data["inventory"][girl] = {"level": 1, "recovery_start": None, "hp_at_start": None, "attack_bonus": 0, "scavenge_end": None, "scavenge_result": None}
+        data["inventory"][girl] = {"level": 1, "recovery_start": None, "hp_at_start": None, "attack_bonus": 0, "stars": 0, "scavenge_end": None, "scavenge_result": None}
         if show_output:
             print("New girl added to inventory!")
     else:
@@ -241,6 +243,9 @@ def ten_pull(data):
 def get_girl_stats(girl, level, data):
     base = girls_data[girl]
     multiplier = 1 + (level - 1) * 0.2
+    # Apply star ascension multiplier: +10% per star
+    stars = data["inventory"][girl].get("stars", 0)
+    multiplier *= (1 + 0.10 * stars)
     stats = {
         "attack": int(base["base_attack"] * multiplier),
         "defense": int(base["base_defense"] * multiplier),
@@ -288,7 +293,11 @@ def show_inventory(data):
             stats = get_girl_stats(girl, level, data)
             curr_hp = get_current_hp(girl, gdata, data)
             info = girls_data[girl]
-            print(f"{i}. {girl} (Lv.{level}) - {info['rarity']} ({info['element']}) [{info['class']}] - HP: {int(curr_hp)}/{stats['hp']}")
+            stars = data["inventory"][girl].get("stars", 0)
+            star_txt = f" aa{stars}" if stars > 0 else ""
+            print(f"{i}. {girl} (Lv.{level}{star_txt}) - {info['rarity']} ({info['element']}) [{info['class']}] - HP: {int(curr_hp)}/{stats['hp']}")
+            if stars > 0:
+                print(f"  Stars: {stars}")
             print(f"  Stats: ATK {stats['attack']}, DEF {stats['defense']}, SPD {stats['speed']}")
             print(f"  {info['catchline']}")
             if not is_available(gdata):
@@ -324,7 +333,8 @@ def show_girl_details(girl, gdata, data):
     print(f"Rarity: {info['rarity']}")
     print(f"Element: {info['element']}")
     print(f"Class: {info['class']}")
-    print(f"Level: {level}")
+    stars = gdata.get("stars", 0)
+    print(f"Level: {level}  Stars: {stars}")
     print(f"Current HP: {int(curr_hp)} / {stats['hp']}")
     print(f"Stats: ATK {stats['attack']}, DEF {stats['defense']}, HP {stats['hp']}, SPD {stats['speed']}")
     print(f"Skills: {', '.join(info['skills'])}")
@@ -342,33 +352,58 @@ def show_dupes(data):
         dupe_list = list(data["dupes"].items())
         for i, (girl, count) in enumerate(dupe_list, 1):
             print(f"{i}. {girl}: {count}")
-        print("\nSell dupes? Enter 'number amount' (e.g., '1 1') or 'back': ", end="")
+        print("\nActions: 'number amount' to sell, 'a number' to ascend that girl, or 'back': ", end="")
         choice = input().strip()
         if choice.lower() == 'back':
             break
         try:
-            parts = choice.split()
-            if len(parts) != 2:
-                print("Invalid input! Use 'number amount'")
-                continue
-            idx = int(parts[0])
-            amt = int(parts[1])
-            if amt <= 0:
-                print("Amount must be positive!")
-                continue
-            if 1 <= idx <= len(dupe_list):
-                girl, current = dupe_list[idx - 1]
-                if amt > current:
-                    print(f"Only {current} available!")
-                    continue
-                data["coins"] += amt * 100
-                data["dupes"][girl] -= amt
-                if data["dupes"][girl] == 0:
-                    del data["dupes"][girl]
-                print(f"Sold {amt} dupe(s) of {girl} for {amt * 100} coins!")
-                save_game(data)
+            if choice.lower().startswith('a '):
+                # Ascend command
+                idx = int(choice.split()[1])
+                if 1 <= idx <= len(dupe_list):
+                    girl, current = dupe_list[idx - 1]
+                    if girl not in data["inventory"]:
+                        print("You do not own this girl.")
+                        continue
+                    stars = data["inventory"][girl].get("stars", 0)
+                    if stars >= 5:
+                        print(f"{girl} is at max stars.")
+                        continue
+                    cost = stars + 1
+                    if current < cost:
+                        print(f"Need {cost} dupes to ascend (have {current}).")
+                        continue
+                    data["inventory"][girl]["stars"] = stars + 1
+                    data["dupes"][girl] = current - cost
+                    if data["dupes"][girl] <= 0:
+                        del data["dupes"][girl]
+                    print(f"Ascended {girl} to {stars+1}⭐ using {cost} dupes!")
+                    save_game(data)
+                else:
+                    print("Invalid number!")
             else:
-                print("Invalid number!")
+                parts = choice.split()
+                if len(parts) != 2:
+                    print("Invalid input! Use 'number amount' or 'a number'")
+                    continue
+                idx = int(parts[0])
+                amt = int(parts[1])
+                if amt <= 0:
+                    print("Amount must be positive!")
+                    continue
+                if 1 <= idx <= len(dupe_list):
+                    girl, current = dupe_list[idx - 1]
+                    if amt > current:
+                        print(f"Only {current} available!")
+                        continue
+                    data["coins"] += amt * 100
+                    data["dupes"][girl] -= amt
+                    if data["dupes"][girl] == 0:
+                        del data["dupes"][girl]
+                    print(f"Sold {amt} dupe(s) of {girl} for {amt * 100} coins!")
+                    save_game(data)
+                else:
+                    print("Invalid number!")
         except ValueError:
             print("Invalid input!")
     input("Press Enter to continue...")

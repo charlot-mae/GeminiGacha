@@ -263,6 +263,7 @@ class GachaApp:
                 "recovery_start": None,
                 "hp_at_start": None,
                 "attack_bonus": 0,
+                "stars": 0,
                 "scavenge_end": None,
                 "scavenge_result": None,
             }
@@ -403,9 +404,10 @@ class GachaApp:
             txt = tk.Frame(card, bg=BG_CARD)
             txt.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+            stars = gdata.get("stars", 0)
             tk.Label(
                 txt,
-                text=f"{girl} Lv.{gdata['level']}",
+                text=(f"{girl} Lv.{gdata['level']}" + (f"  ★x{stars}" if stars > 0 else "")),
                 font=("Segoe UI", 12, "bold"),
                 fg=TEXT_FG,
                 bg=BG_CARD,
@@ -473,7 +475,7 @@ class GachaApp:
         row = ttk.Frame(wrapper, style="Card.TFrame")
         row.pack(fill=tk.X, pady=8)
         amt_var = tk.IntVar(value=1)
-        ttk.Label(row, text="Amount:").pack(side=tk.LEFT)
+        ttk.Label(row, text="Amount (for Sell/Ascend):").pack(side=tk.LEFT)
         amt_entry = ttk.Entry(row, width=8, textvariable=amt_var)
         amt_entry.pack(side=tk.LEFT, padx=6)
 
@@ -498,7 +500,57 @@ class GachaApp:
             messagebox.showinfo("Sold", f"Sold {amt} {name} dupe(s) for {amt * 100} coins.")
             win.destroy()
 
-        ttk.Button(wrapper, text="Sell Selected", command=sell_selected).pack(pady=6)
+        def ascend_selected():
+            idx = lst.curselection()
+            if not idx:
+                messagebox.showerror("Select", "Select a dupe to use for Ascend.")
+                return
+            name, current = dupe_items[idx[0]]
+            if name not in self.data.get("inventory", {}):
+                messagebox.showerror("Ascend", "You don't own this girl.")
+                return
+            stars = self.data["inventory"][name].get("stars", 0)
+            if stars >= 5:
+                messagebox.showinfo("Ascend", f"{name} is at max stars.")
+                return
+            # Support multiple ascensions based on Amount
+            requested = amt_var.get()
+            if requested <= 0:
+                requested = 1
+            performed = 0
+            consumed = 0
+            new_stars = stars
+            while performed < requested and new_stars < 5:
+                step_cost = new_stars + 1
+                if current - consumed < step_cost:
+                    break
+                consumed += step_cost
+                new_stars += 1
+                performed += 1
+            if performed == 0:
+                need = stars + 1
+                messagebox.showerror("Ascend", f"Need {need} dupes (have {current}).")
+                return
+            if not messagebox.askyesno(
+                "Confirm Ascend",
+                f"Ascend {name} by {performed}★ to {new_stars}★ using {consumed} dupes?",
+            ):
+                return
+            self.data["inventory"][name]["stars"] = new_stars
+            remaining = current - consumed
+            if remaining <= 0:
+                del self.data["dupes"][name]
+            else:
+                self.data["dupes"][name] = remaining
+            self._refresh_header()
+            self.save_game(self.data)
+            messagebox.showinfo("Ascended", f"{name} ascended to {new_stars}★ (used {consumed} dupes). Stats increased.")
+            win.destroy()
+
+        buttons = ttk.Frame(wrapper, style="Card.TFrame")
+        buttons.pack(fill=tk.X, pady=6)
+        ttk.Button(buttons, text="Sell Selected", command=sell_selected).pack(side=tk.LEFT, padx=4)
+        ttk.Button(buttons, text="Ascend Selected", command=ascend_selected).pack(side=tk.LEFT, padx=4)
 
     # ---------------- Shop ----------------
     def open_shop(self):
