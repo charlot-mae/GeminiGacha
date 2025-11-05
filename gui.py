@@ -351,21 +351,43 @@ class GachaApp:
         if self.data.get("coins", 0) < self.SINGLE_PULL_COST:
             messagebox.showerror("Not enough coins", f"Need {self.SINGLE_PULL_COST} coins.")
             return
+        coins_before = self.data.get("coins", 0)
+        rare_before = self.data.get("rare_pity", 0)
+        leg_before = self.data.get("legendary_pity", 0)
         self.data["coins"] -= self.SINGLE_PULL_COST
         res = self._perform_pull_core()
         self._refresh_header()
-        self._show_pull_results([res])
+        summary = {
+            "coins_before": coins_before,
+            "coins_after": self.data.get("coins", 0),
+            "rare_before": rare_before,
+            "rare_after": self.data.get("rare_pity", 0),
+            "legendary_before": leg_before,
+            "legendary_after": self.data.get("legendary_pity", 0),
+        }
+        self._show_pull_results([res], summary)
 
     def ten_pull(self):
         if self.data.get("coins", 0) < self.TEN_PULL_COST:
             messagebox.showerror("Not enough coins", f"Need {self.TEN_PULL_COST} coins.")
             return
+        coins_before = self.data.get("coins", 0)
+        rare_before = self.data.get("rare_pity", 0)
+        leg_before = self.data.get("legendary_pity", 0)
         self.data["coins"] -= self.TEN_PULL_COST
         results = [self._perform_pull_core() for _ in range(10)]
         self._refresh_header()
-        self._show_pull_results(results)
+        summary = {
+            "coins_before": coins_before,
+            "coins_after": self.data.get("coins", 0),
+            "rare_before": rare_before,
+            "rare_after": self.data.get("rare_pity", 0),
+            "legendary_before": leg_before,
+            "legendary_after": self.data.get("legendary_pity", 0),
+        }
+        self._show_pull_results(results, summary)
 
-    def _show_pull_results(self, results):
+    def _show_pull_results(self, results, summary=None):
         win = tk.Toplevel(self.root)
         win.title("Pull Results")
         win.configure(bg=BG_DARK)
@@ -374,9 +396,47 @@ class GachaApp:
         wrapper = ttk.Frame(win, style="Card.TFrame", padding=12)
         wrapper.pack(fill=tk.BOTH, expand=True)
 
+        # Summary header (coins + pity deltas)
+        if summary:
+            coins_b = summary.get("coins_before", 0)
+            coins_a = summary.get("coins_after", coins_b)
+            delta_c = coins_a - coins_b
+            pity_row = ttk.Frame(wrapper, style="Card.TFrame")
+            pity_row.pack(fill=tk.X, pady=(0, 8))
+            ttk.Label(
+                pity_row,
+                text=f"Coins: {coins_a} ({delta_c:+d})",
+                foreground=(WARN if delta_c < 0 else SUCCESS if delta_c > 0 else TEXT_SUB),
+            ).pack(anchor="w")
+            rb = summary.get("rare_before", 0)
+            ra = summary.get("rare_after", rb)
+            lb = summary.get("legendary_before", 0)
+            la = summary.get("legendary_after", lb)
+            ttk.Label(
+                pity_row,
+                text=f"Pity → Rare {rb} → {ra}, Legendary {lb} → {la}",
+                foreground=TEXT_SUB,
+            ).pack(anchor="w")
+
+        # New vs Dupes summary
+        try:
+            new_count = sum(1 for r in results if r.get("new"))
+            dup_count = max(0, len(results) - new_count)
+            ttk.Label(
+                wrapper,
+                text=f"New: {new_count}  |  Dupes: {dup_count}",
+                foreground=TEXT_SUB,
+            ).pack(anchor="w", pady=(0, 6))
+        except Exception:
+            pass
+
         for res in results:
             card = ttk.Frame(wrapper, style="Card.TFrame", padding=10)
             card.pack(fill=tk.X, pady=6)
+
+            tk.Frame(card, bg=(SUCCESS if res["new"] else WARN), width=6, height=1).pack(
+                side=tk.LEFT, fill=tk.Y, padx=(0, 8)
+            )
 
             self._portrait(card, res["girl"], 64).pack(side=tk.LEFT, padx=(0, 12))
             info = self.girls_data[res["girl"]]
@@ -384,11 +444,19 @@ class GachaApp:
             txt = ttk.Frame(card, style="Card.TFrame")
             txt.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+            name_row = ttk.Frame(txt, style="Card.TFrame")
+            name_row.pack(anchor="w")
             ttk.Label(
-                txt,
+                name_row,
                 text=f"{res['girl']} ({res['rarity']})",
                 font=("Segoe UI", 12, "bold"),
-            ).pack(anchor="w")
+            ).pack(side=tk.LEFT)
+            try:
+                stars = self.data.get("inventory", {}).get(res["girl"], {}).get("stars", 0)
+                if stars > 0:
+                    ttk.Label(name_row, text=f" ★x{stars}", foreground=ACCENT).pack(side=tk.LEFT, padx=(6, 0))
+            except Exception:
+                pass
             line = ttk.Frame(txt, style="Card.TFrame")
             line.pack(anchor="w")
             self._element_badge(line, info['element'], size=14, bg=BG_CARD).pack(side=tk.LEFT, padx=(0,6))
