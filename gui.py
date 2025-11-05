@@ -33,6 +33,15 @@ RARITY_COLORS = {
     "Legendary": "#FFAA00",
 }
 
+# Level caps per rarity
+RARITY_LEVEL_CAPS = {
+    "Common": 20,
+    "Uncommon": 30,
+    "Rare": 40,
+    "Epic": 50,
+    "Legendary": 60,
+}
+
 
 class GachaApp:
     def __init__(self, root, data, api):
@@ -785,8 +794,14 @@ class GachaApp:
         lst = tk.Listbox(box, bg=BG_CARD, fg=TEXT_FG)
         for g in girls:
             lv = self.data["inventory"][g]["level"]
+            info = self.girls_data[g]
+            cap = RARITY_LEVEL_CAPS.get(info["rarity"], 999)
             cost = 10 * (lv + 1) ** 2
-            lst.insert(tk.END, f"{g} Lv.{lv} — Cost {cost} shards")
+            if lv >= cap:
+                label = f"{g} Lv.{lv}/{cap} — MAX"
+            else:
+                label = f"{g} Lv.{lv}/{cap} — Cost {cost} shards"
+            lst.insert(tk.END, label)
         lst.pack(fill=tk.BOTH, expand=True)
 
         def do_train():
@@ -794,6 +809,11 @@ class GachaApp:
                 return
             name = girls[lst.curselection()[0]]
             lv = self.data["inventory"][name]["level"]
+            info = self.girls_data[name]
+            cap = RARITY_LEVEL_CAPS.get(info["rarity"], 999)
+            if lv >= cap:
+                messagebox.showinfo("Training", f"{name} reached level cap ({cap}) for {info['rarity']}.")
+                return
             cost = 10 * (lv + 1) ** 2
             if self.data.get("shards", 0) < cost:
                 messagebox.showerror("Shards", f"Need {cost} shards.")

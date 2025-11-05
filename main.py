@@ -134,6 +134,15 @@ monsters = [
 rarity_order = ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 rarity_rates = [0.70, 0.20, 0.05, 0.04, 0.01]
 
+# Level caps per rarity
+RARITY_LEVEL_CAPS = {
+    "Common": 20,
+    "Uncommon": 30,
+    "Rare": 40,
+    "Epic": 50,
+    "Legendary": 60,
+}
+
 SAVE_FILE = "gacha_save.json"
 SINGLE_PULL_COST = 100
 TEN_PULL_COST = 900
@@ -761,18 +770,31 @@ def training(data):
     if data["shards"] == 0:
         print("No shards!")
         return
-    
+
     girls_list = list(data["inventory"].keys())
     print("\n=== TRAINING ===")
     for i, girl in enumerate(girls_list, 1):
         level = data["inventory"][girl]["level"]
         elem = girls_data[girl]["element"]
-        print(f"{i}. {girl} (Lv.{level}, {elem})")
+        rarity = girls_data[girl]["rarity"]
+        cap = RARITY_LEVEL_CAPS.get(rarity, 999)
+        if level >= cap:
+            note = "MAX"
+        else:
+            note = f"cost {10 * (level + 1) ** 2} shards"
+        print(f"{i}. {girl} (Lv.{level}/{cap}, {elem}, {rarity}) — {note}")
     
     try:
         idx = int(input("Choose: ")) - 1
         girl = girls_list[idx]
         level = data["inventory"][girl]["level"]
+        rarity = girls_data[girl]["rarity"]
+        cap = RARITY_LEVEL_CAPS.get(rarity, 999)
+        if level >= cap:
+            print(f"{girl} reached level cap ({cap}) for {rarity}.")
+            input("Press Enter...")
+            save_game(data)
+            return
         cost = 10 * (level + 1) ** 2
         if data["shards"] < cost:
             print(f"Need {cost} shards!")
