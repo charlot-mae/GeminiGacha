@@ -164,7 +164,7 @@ def load_save():
             "rare_pity": 0,
             "legendary_pity": 0
         }
-    
+
     # Migrate old saves
     for girl in list(data["inventory"].keys()):
         gdata = data["inventory"][girl]
@@ -178,7 +178,16 @@ def load_save():
             gdata["scavenge_end"] = None
         if "scavenge_result" not in gdata:
             gdata["scavenge_result"] = None
-    
+
+    # Ensure team presets (3 slots)
+    if not isinstance(data.get("team_presets"), list):
+        data["team_presets"] = [[], [], []]
+    else:
+        if len(data["team_presets"]) < 3:
+            data["team_presets"] += [[] for _ in range(3 - len(data["team_presets"]))]
+        elif len(data["team_presets"]) > 3:
+            data["team_presets"] = data["team_presets"][:3]
+
     return data
 
 def save_game(data):
@@ -590,8 +599,17 @@ def turn_based_battle(data):
         print("No girls available!")
         input("Press Enter to continue...")
         return
-    
+
     print("\n=== SELECT UP TO 3 GIRLS FOR BATTLE ===")
+    # Show team preset summaries
+    presets = data.get("team_presets", [[], [], []])
+    try:
+        for i in range(3):
+            names = presets[i] if i < len(presets) else []
+            label = ", ".join(names) if names else "(empty)"
+            print(f"Slot {i+1}: {label}")
+    except Exception:
+        pass
     selected = []
     while len(selected) < 3 and available_girls:
         print(f"Team: {', '.join(selected) if selected else 'Empty'}")
@@ -600,10 +618,42 @@ def turn_based_battle(data):
             elem = girls_data[girl]["element"]
             cls = girls_data[girl]["class"]
             print(f"{i}. {girl} (Lv.{level}, {elem}) [{cls}]")
-        print(f"{len(available_girls)+1}. Done")
-        
+        print(f"{len(available_girls)+1}. Done  | Presets: 'p<1-3>' load, 's<1-3>' save, 'c<1-3>' clear")
+
         try:
-            choice = int(input("Choose: "))
+            raw = input("Choose: ").strip().lower()
+            # Preset commands
+            if raw.startswith('p') and len(raw) >= 2 and raw[1].isdigit():
+                slot = int(raw[1]) - 1
+                presets = data.get("team_presets", [[], [], []])
+                if 0 <= slot < 3:
+                    target = [g for g in presets[slot] if g in available_girls]
+                    if not target:
+                        print("No saved team in that slot or members unavailable.")
+                    else:
+                        for g in target:
+                            if len(selected) >= 3:
+                                break
+                            selected.append(g)
+                            if g in available_girls:
+                                available_girls.remove(g)
+                continue
+            if raw.startswith('s') and len(raw) >= 2 and raw[1].isdigit():
+                slot = int(raw[1]) - 1
+                if 0 <= slot < 3:
+                    data["team_presets"][slot] = selected[:3]
+                    save_game(data)
+                    print(f"Saved team to slot {slot+1}: {', '.join(data['team_presets'][slot])}")
+                continue
+            if raw.startswith('c') and len(raw) >= 2 and raw[1].isdigit():
+                slot = int(raw[1]) - 1
+                if 0 <= slot < 3:
+                    data["team_presets"][slot] = []
+                    save_game(data)
+                    print(f"Cleared slot {slot+1}.")
+                continue
+
+            choice = int(raw)
             if choice == len(available_girls) + 1:
                 break
             if 1 <= choice <= len(available_girls):
@@ -612,9 +662,9 @@ def turn_based_battle(data):
                 available_girls.remove(girl)
             else:
                 print("Invalid!")
-        except:
+        except ValueError:
             print("Invalid input!")
-    
+
     if not selected:
         print("No team selected!")
         input("Press Enter...")

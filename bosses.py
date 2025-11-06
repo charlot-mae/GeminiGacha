@@ -95,7 +95,34 @@ def _select_team(data, funcs):
         print("No girls ready!")
         input("Press Enter…")
         return []
+    # Ensure presets exist
+    if not isinstance(data.get("team_presets"), list):
+        data["team_presets"] = [[], [], []]
+    elif len(data["team_presets"]) < 3:
+        data["team_presets"] += [[] for _ in range(3 - len(data["team_presets"]))]
+    elif len(data["team_presets"]) > 3:
+        data["team_presets"] = data["team_presets"][:3]
+
+    # Show team preset summaries
+    try:
+        presets = data.get("team_presets", [[], [], []])
+        for i in range(3):
+            names = presets[i] if i < len(presets) else []
+            label = ", ".join(names) if names else "(empty)"
+            print(f"Slot {i+1}: {label}")
+    except Exception:
+        pass
+    # Offer loading a preset first
+    print("Load preset slot? (1-3) or Enter to skip: ", end="")
+    ch = input().strip()
     selected = []
+    if ch in ("1", "2", "3"):
+        idx = int(ch) - 1
+        names = [g for g in data["team_presets"][idx] if g in avail]
+        for g in names:
+            if len(selected) < 3:
+                selected.append(g)
+                avail.remove(g)
     while len(selected) < 3 and avail:
         print(f"\nTeam ({len(selected)}/3): {', '.join(selected) or '---'}")
         for i, g in enumerate(avail, 1):
@@ -130,6 +157,14 @@ def _select_team(data, funcs):
             "defending": False,
             "shield": False,
         })
+    # Offer saving the team to a slot
+    print("Save this team to slot? (1-3) or Enter to skip: ", end="")
+    ch = input().strip()
+    if ch in ("1", "2", "3"):
+        idx = int(ch) - 1
+        data["team_presets"][idx] = [g for g in selected]
+        funcs["save_game"](data)
+        print(f"Saved team to slot {idx+1}: {', '.join(selected)}")
     return team
 
 def _start_new_boss_fight(data, funcs):

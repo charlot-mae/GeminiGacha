@@ -68,6 +68,8 @@ class GachaApp:
         self.root.configure(bg=BG_DARK)
         self.root.geometry("1000x680")
         self.root.minsize(860, 560)
+        # Maximize the main window (cross‑platform attempts)
+        self._maximize(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
 
         style = ttk.Style()
@@ -92,6 +94,29 @@ class GachaApp:
         # periodic header refresh to reflect unsaved status
         self.root.after(2000, self._refresh_header_loop)
 
+    # Window helpers
+    def _maximize(self, win):
+        try:
+            win.state("zoomed")  # Windows, some X11
+            return
+        except Exception:
+            pass
+        try:
+            win.attributes("-zoomed", True)  # some Tk variants
+            return
+        except Exception:
+            pass
+        try:
+            win.attributes("-fullscreen", True)  # fallback
+            return
+        except Exception:
+            pass
+        try:
+            sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+            win.geometry(f"{sw}x{sh}+0+0")
+        except Exception:
+            pass
+
     def _element_badge(self, parent, element, size=14, bg=None):
         bg = bg or BG_CARD
         color = ELEMENT_COLORS.get(element, "#666666")
@@ -109,6 +134,16 @@ class GachaApp:
         self.data.setdefault("cave_unlocked", False)
         self.data.setdefault("active_boss", None)
         self.data.setdefault("boss_fight_state", None)
+        # Team presets: three slots of saved team names
+        if "team_presets" not in self.data or not isinstance(self.data.get("team_presets"), list):
+            self.data["team_presets"] = [[], [], []]
+        else:
+            # Ensure exactly three slots
+            pads = 3 - len(self.data["team_presets"])
+            if pads > 0:
+                self.data["team_presets"].extend([[] for _ in range(pads)])
+            elif pads < 0:
+                self.data["team_presets"] = self.data["team_presets"][:3]
 
     # UI builders
     def _build_main(self):
@@ -401,6 +436,7 @@ class GachaApp:
         win.title("Pull Results")
         win.configure(bg=BG_DARK)
         win.geometry("520x640")
+        self._maximize(win)
 
         wrapper = ttk.Frame(win, style="Card.TFrame", padding=12)
         wrapper.pack(fill=tk.BOTH, expand=True)
@@ -491,6 +527,7 @@ class GachaApp:
         win.title("Inventory")
         win.configure(bg=BG_DARK)
         win.geometry("860x600")
+        self._maximize(win)
 
         main = tk.Frame(win, bg=BG_DARK)
         main.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -583,6 +620,7 @@ class GachaApp:
         win.title("Dupes")
         win.configure(bg=BG_DARK)
         win.geometry("520x520")
+        self._maximize(win)
 
         wrapper = ttk.Frame(win, style="Card.TFrame", padding=12)
         wrapper.pack(fill=tk.BOTH, expand=True)
@@ -688,6 +726,7 @@ class GachaApp:
         win.title("Coin Shop")
         win.configure(bg=BG_DARK)
         win.geometry("520x520")
+        self._maximize(win)
 
         box = ttk.Frame(win, style="Card.TFrame", padding=12)
         box.pack(fill=tk.BOTH, expand=True)
@@ -787,6 +826,7 @@ class GachaApp:
         win.title("Training")
         win.configure(bg=BG_DARK)
         win.geometry("560x520")
+        self._maximize(win)
 
         box = ttk.Frame(win, style="Card.TFrame", padding=12)
         box.pack(fill=tk.BOTH, expand=True)
@@ -837,6 +877,7 @@ class GachaApp:
         win.title("Scavenging")
         win.configure(bg=BG_DARK)
         win.geometry("520x500")
+        self._maximize(win)
 
         box = ttk.Frame(win, style="Card.TFrame", padding=12)
         box.pack(fill=tk.BOTH, expand=True)
@@ -877,6 +918,7 @@ class GachaApp:
         win.title("Healing Session")
         win.configure(bg=BG_DARK)
         win.geometry("640x520")
+        self._maximize(win)
 
         row = ttk.Frame(win, style="Card.TFrame", padding=12)
         row.pack(fill=tk.BOTH, expand=True)
@@ -933,6 +975,7 @@ class GachaApp:
         win.title("Battle (Auto)")
         win.configure(bg=BG_DARK)
         win.geometry("720x560")
+        self._maximize(win)
 
         box = ttk.Frame(win, style="Card.TFrame", padding=12)
         box.pack(fill=tk.BOTH, expand=True)
@@ -945,12 +988,256 @@ class GachaApp:
             lst.insert(tk.END, f"{g} Lv.{lv} — {info['element']} [{info['class']}]")
         lst.pack(fill=tk.X)
 
+        # Combined team stats panel
+        team_stats_lbl = ttk.Label(box, text="Team: 0 selected  |  ATK 0  DEF 0  HP 0  SPD 0", foreground=TEXT_SUB)
+        team_stats_lbl.pack(anchor="w", pady=(4, 0))
+        matchup_lbl = ttk.Label(box, text="", foreground=WARN)
+        matchup_lbl.pack(anchor="w")
+        adv_lbl = ttk.Label(box, text="", foreground=TEXT_SUB)
+        adv_lbl.pack(anchor="w")
+
+        def _refresh_team_stats_from_selection():
+            idxs = lst.curselection()
+            names_sel = [available[i] for i in idxs]
+            totals = {"attack": 0, "defense": 0, "hp": 0, "speed": 0}
+            for n in names_sel:
+                gd = inv[n]
+                st = self.get_girl_stats(n, gd["level"], self.data)
+                for k in totals:
+                    totals[k] += st[k]
+            # Element distribution
+            elem_counts = {}
+            for n in names_sel:
+                e = self.girls_data[n]["element"]
+                elem_counts[e] = elem_counts.get(e, 0) + 1
+            elems_text = ""
+            if elem_counts:
+                order = list(ELEMENT_COLORS.keys())
+                parts = []
+                for e in order:
+                    if elem_counts.get(e):
+                        parts.append(f"{e} {elem_counts[e]}")
+                for e, c in elem_counts.items():
+                    if e not in order:
+                        parts.append(f"{e} {c}")
+                elems_text = "  |  Elements: " + "  ".join(parts)
+            nsel = max(1, len(names_sel))
+            avgs = {
+                "attack": int(totals["attack"] / nsel),
+                "defense": int(totals["defense"] / nsel),
+                "hp": int(totals["hp"] / nsel),
+                "speed": int(totals["speed"] / nsel),
+            }
+            team_stats_lbl.configure(text=(
+                f"Team: {len(names_sel)} selected  |  "
+                f"ATK {totals['attack']} (avg {avgs['attack']})  "
+                f"DEF {totals['defense']} (avg {avgs['defense']})  "
+                f"HP {totals['hp']} (avg {avgs['hp']})  "
+                f"SPD {totals['speed']} (avg {avgs['speed']})" + elems_text
+            ))
+
+            # Enemy matchup warning (defensive weakness)
+            try:
+                mon_name = sel_mon.get() or names[0]
+                mon = next((m for m in self.monsters if m["name"] == mon_name), None)
+                enemy_elem = mon.get("element") if mon else None
+            except Exception:
+                enemy_elem = None
+            warn_txt = ""
+            if enemy_elem and names_sel:
+                weak_count = 0
+                for n in names_sel:
+                    g_elem = self.girls_data[n]["element"]
+                    multi_def = self.elemental_multiplier(enemy_elem, g_elem) or 1.0
+                    if multi_def > 1.0:
+                        weak_count += 1
+                if weak_count >= 2:
+                    warn_txt = f"Warning: {enemy_elem} enemy is strong against {weak_count} team member(s)."
+                elif weak_count == 1:
+                    warn_txt = f"Caution: {enemy_elem} enemy is strong against 1 member."
+            matchup_lbl.configure(text=warn_txt)
+
+            # Offensive advantage + overall score
+            if enemy_elem and names_sel:
+                strong_off = 0
+                weak_off = 0
+                for n in names_sel:
+                    g_elem = self.girls_data[n]["element"]
+                    multi_off = self.elemental_multiplier(g_elem, enemy_elem) or 1.0
+                    if multi_off > 1.0:
+                        strong_off += 1
+                    elif multi_off < 1.0:
+                        weak_off += 1
+                score = strong_off - weak_count
+                color = SUCCESS if score > 0 else ERROR if score < 0 else TEXT_SUB
+                adv_lbl.configure(text=f"Offense: strong {strong_off}, weak {weak_off}  |  Score: {score:+d}", foreground=color)
+            else:
+                adv_lbl.configure(text="", foreground=TEXT_SUB)
+
+        lst.bind("<<ListboxSelect>>", lambda e: _refresh_team_stats_from_selection())
+
+        # Preset controls
+        preset_row = ttk.Frame(box, style="Card.TFrame")
+        preset_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(preset_row, text="Team Preset:").pack(side=tk.LEFT)
+        preset_var = tk.IntVar(value=1)
+        preset_combo = ttk.Combobox(preset_row, values=["1", "2", "3"], state="readonly")
+        preset_combo.current(0)
+        preset_combo.pack(side=tk.LEFT, padx=6)
+
+        # Preset summary label
+        preset_info = ttk.Label(box, text="", foreground=TEXT_SUB)
+        preset_info.pack(anchor="w", pady=(4, 0))
+
+        def refresh_preset_summary():
+            try:
+                presets = self.data.get("team_presets", [[], [], []])
+                pnames = self.data.get("team_preset_names", ["", "", ""]) or ["", "", ""]
+                lines = []
+                for i in range(3):
+                    members = presets[i] if i < len(presets) else []
+                    label = ", ".join(members) if members else "(empty)"
+                    title = pnames[i] if i < len(pnames) and pnames[i] else f"Slot {i+1}"
+                    lines.append(f"{title}: {label}")
+                preset_info.configure(text=" \n".join(lines))
+            except Exception:
+                preset_info.configure(text="")
+
+        def load_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            preset = [n for n in self.data.get("team_presets", [[], [], []])[slot] if n in available]
+            lst.selection_clear(0, tk.END)
+            if not preset:
+                messagebox.showinfo("Team Presets", "No saved team for this slot or members unavailable.")
+                return
+            name_by_index = [available[i] for i in range(len(available))]
+            for i, name in enumerate(name_by_index):
+                if name in preset:
+                    lst.selection_set(i)
+            _refresh_team_stats_from_selection()
+            try:
+                _update_start_state()
+            except Exception:
+                pass
+            try:
+                _update_start_state()
+            except Exception:
+                pass
+
+        def save_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            idxs = lst.curselection()
+            if not idxs or len(idxs) > 3:
+                messagebox.showerror("Team Presets", "Select 1 to 3 girls to save.")
+                return
+            team_names = [available[i] for i in idxs]
+            self.data["team_presets"][slot] = team_names
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Saved to slot {slot+1}: {', '.join(team_names)}")
+            refresh_preset_summary()
+
+        def clear_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            self.data["team_presets"][slot] = []
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Cleared slot {slot+1}.")
+            refresh_preset_summary()
+
+        ttk.Button(preset_row, text="Load", command=load_preset).pack(side=tk.LEFT, padx=4)
+        ttk.Button(preset_row, text="Save", command=save_preset).pack(side=tk.LEFT, padx=4)
+        ttk.Button(preset_row, text="Clear", command=clear_preset).pack(side=tk.LEFT, padx=4)
+        refresh_preset_summary()
+
+        # Quick save-to-slot buttons
+        def quick_save(slot_idx):
+            idxs = lst.curselection()
+            if not idxs or len(idxs) > 3:
+                messagebox.showerror("Team Presets", "Select 1 to 3 girls to save.")
+                return
+            team_names = [available[i] for i in idxs]
+            self.data["team_presets"][slot_idx] = team_names
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Saved to slot {slot_idx+1}: {', '.join(team_names)}")
+            refresh_preset_summary()
+
+        quick_row = ttk.Frame(box, style="Card.TFrame")
+        quick_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(quick_row, text="Quick Save:").pack(side=tk.LEFT)
+        qs1 = ttk.Button(quick_row, text="1", width=3, command=lambda: quick_save(0)); qs1.pack(side=tk.LEFT, padx=2)
+        qs1_name = ttk.Label(quick_row, text="", foreground=TEXT_SUB); qs1_name.pack(side=tk.LEFT, padx=(0,8))
+        qs2 = ttk.Button(quick_row, text="2", width=3, command=lambda: quick_save(1)); qs2.pack(side=tk.LEFT, padx=2)
+        qs2_name = ttk.Label(quick_row, text="", foreground=TEXT_SUB); qs2_name.pack(side=tk.LEFT, padx=(0,8))
+        qs3 = ttk.Button(quick_row, text="3", width=3, command=lambda: quick_save(2)); qs3.pack(side=tk.LEFT, padx=2)
+        qs3_name = ttk.Label(quick_row, text="", foreground=TEXT_SUB); qs3_name.pack(side=tk.LEFT, padx=(0,8))
+
+        # Quick load-from-slot buttons
+        def quick_load(slot_idx):
+            presets = self.data.get("team_presets", [[], [], []])
+            preset = [n for n in presets[slot_idx] if n in available]
+            lst.selection_clear(0, tk.END)
+            if not preset:
+                messagebox.showinfo("Team Presets", f"Slot {slot_idx+1} is empty or members unavailable.")
+                return
+            name_by_index = [available[i] for i in range(len(available))]
+            for i, name in enumerate(name_by_index):
+                if name in preset:
+                    lst.selection_set(i)
+            _refresh_team_stats_from_selection()
+
+        quick_row_load = ttk.Frame(box, style="Card.TFrame")
+        quick_row_load.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(quick_row_load, text="Quick Load:").pack(side=tk.LEFT)
+        ql1 = ttk.Button(quick_row_load, text="1", width=3, command=lambda: quick_load(0)); ql1.pack(side=tk.LEFT, padx=2)
+        ql1_name = ttk.Label(quick_row_load, text="", foreground=TEXT_SUB); ql1_name.pack(side=tk.LEFT, padx=(0,8))
+        ql2 = ttk.Button(quick_row_load, text="2", width=3, command=lambda: quick_load(1)); ql2.pack(side=tk.LEFT, padx=2)
+        ql2_name = ttk.Label(quick_row_load, text="", foreground=TEXT_SUB); ql2_name.pack(side=tk.LEFT, padx=(0,8))
+        ql3 = ttk.Button(quick_row_load, text="3", width=3, command=lambda: quick_load(2)); ql3.pack(side=tk.LEFT, padx=2)
+        ql3_name = ttk.Label(quick_row_load, text="", foreground=TEXT_SUB); ql3_name.pack(side=tk.LEFT, padx=(0,8))
+
+        def _refresh_quick_name_labels():
+            names = self.data.get("team_preset_names", ["", "", ""]) or ["", "", ""]
+            def fmt(i):
+                return f"— {names[i]}" if names[i] else ""
+            ql1_name.configure(text=fmt(0)); ql2_name.configure(text=fmt(1)); ql3_name.configure(text=fmt(2))
+            qs1_name.configure(text=fmt(0)); qs2_name.configure(text=fmt(1)); qs3_name.configure(text=fmt(2))
+
+        # Preset naming controls
+        name_row = ttk.Frame(box, style="Card.TFrame")
+        name_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(name_row, text="Preset Name:").pack(side=tk.LEFT)
+        name_var = tk.StringVar(value="")
+        name_entry = ttk.Entry(name_row, textvariable=name_var, width=18)
+        name_entry.pack(side=tk.LEFT, padx=6)
+
+        def rename_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            self.data["team_preset_names"][slot] = name_var.get().strip()
+            self.save_game(self.data)
+            refresh_preset_summary()
+            _refresh_quick_name_labels()
+        _refresh_quick_name_labels()
+
+        ttk.Button(name_row, text="Rename", command=rename_preset).pack(side=tk.LEFT)
+
         sel_mon = tk.StringVar()
         names = [m["name"] for m in self.monsters]
         ttk.Label(box, text="Monster:").pack(anchor="w", pady=(10, 0))
         mon_combo = ttk.Combobox(box, values=names, textvariable=sel_mon, state="readonly")
         mon_combo.current(0)
         mon_combo.pack(fill=tk.X)
+        mon_combo.bind("<<ComboboxSelected>>", lambda e: _refresh_team_stats_from_selection())
 
         # Mode selection
         mode_var = tk.StringVar(value="auto")
@@ -959,6 +1246,12 @@ class GachaApp:
         ttk.Label(mode_row, text="Mode:").pack(side=tk.LEFT)
         ttk.Radiobutton(mode_row, text="Autoplay", value="auto", variable=mode_var).pack(side=tk.LEFT, padx=6)
         ttk.Radiobutton(mode_row, text="Turn-Based", value="turn", variable=mode_var).pack(side=tk.LEFT, padx=6)
+
+        # Start button row (created before log; wired after start() is defined)
+        start_row = ttk.Frame(box, style="Card.TFrame")
+        start_row.pack(fill=tk.X, pady=(6, 0))
+        start_btn = ttk.Button(start_row, text="Start Battle", state=tk.DISABLED)
+        start_btn.pack(side=tk.RIGHT)
 
         log = tk.Text(box, bg=BG_CARD, fg=TEXT_FG, height=14)
         log.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
@@ -980,8 +1273,18 @@ class GachaApp:
             else:
                 win.destroy()
                 self._run_turn_battle(team_names, monster)
+        # Hook command now that start exists
+        start_btn.configure(command=start)
 
-        ttk.Button(box, text="Start Battle", command=start).pack(pady=8)
+        # Enable/disable Start based on selection count
+        def _update_start_state():
+            n = len(lst.curselection())
+            start_btn.configure(state=(tk.NORMAL if 1 <= n <= 3 else tk.DISABLED))
+
+        lst.bind("<<ListboxSelect>>", lambda e: (_refresh_team_stats_from_selection(), _update_start_state()))
+        _update_start_state()
+
+        # start_btn already created above
 
     # ---- Auto battle core (kept) ----
     def _run_auto_battle(self, log_window, writeln, inv, team_names, monster):
@@ -1293,6 +1596,7 @@ class GachaApp:
         win.title("Dark Cave — Boss Fight")
         win.configure(bg=BG_DARK)
         win.geometry("760x580")
+        self._maximize(win)
 
         box = ttk.Frame(win, style="Card.TFrame", padding=12)
         box.pack(fill=tk.BOTH, expand=True)
@@ -1305,6 +1609,252 @@ class GachaApp:
             lst.insert(tk.END, f"{g} Lv.{lv} — {info['element']} [{info['class']}]")
         lst.pack(fill=tk.X)
 
+        # Combined team stats (boss)
+        team_stats2_lbl = ttk.Label(box, text="Team: 0 selected  |  ATK 0  DEF 0  HP 0  SPD 0", foreground=TEXT_SUB)
+        team_stats2_lbl.pack(anchor="w", pady=(4, 0))
+        matchup2_lbl = ttk.Label(box, text="", foreground=WARN)
+        matchup2_lbl.pack(anchor="w")
+        adv2_lbl = ttk.Label(box, text="", foreground=TEXT_SUB)
+        adv2_lbl.pack(anchor="w")
+
+        def _refresh_team2_stats_from_selection():
+            idxs = lst.curselection()
+            names_sel = [available[i] for i in idxs]
+            totals = {"attack": 0, "defense": 0, "hp": 0, "speed": 0}
+            for n in names_sel:
+                gd = inv[n]
+                st = self.get_girl_stats(n, gd["level"], self.data)
+                for k in totals:
+                    totals[k] += st[k]
+            # Element distribution
+            elem_counts = {}
+            for n in names_sel:
+                e = self.girls_data[n]["element"]
+                elem_counts[e] = elem_counts.get(e, 0) + 1
+            elems_text = ""
+            if elem_counts:
+                order = list(ELEMENT_COLORS.keys())
+                parts = []
+                for e in order:
+                    if elem_counts.get(e):
+                        parts.append(f"{e} {elem_counts[e]}")
+                for e, c in elem_counts.items():
+                    if e not in order:
+                        parts.append(f"{e} {c}")
+                elems_text = "  |  Elements: " + "  ".join(parts)
+            nsel = max(1, len(names_sel))
+            avgs = {
+                "attack": int(totals["attack"] / nsel),
+                "defense": int(totals["defense"] / nsel),
+                "hp": int(totals["hp"] / nsel),
+                "speed": int(totals["speed"] / nsel),
+            }
+            team_stats2_lbl.configure(text=(
+                f"Team: {len(names_sel)} selected  |  "
+                f"ATK {totals['attack']} (avg {avgs['attack']})  "
+                f"DEF {totals['defense']} (avg {avgs['defense']})  "
+                f"HP {totals['hp']} (avg {avgs['hp']})  "
+                f"SPD {totals['speed']} (avg {avgs['speed']})" + elems_text
+            ))
+
+            # Boss matchup warning
+            try:
+                sel = sel_boss.get() or boss_names[0]
+                boss_t = next((t for t in BOSS_POOL if t[0] == sel), None)
+                enemy_elem = boss_t[6] if boss_t else None
+            except Exception:
+                enemy_elem = None
+            warn_txt = ""
+            if enemy_elem and names_sel:
+                weak_count = 0
+                for n in names_sel:
+                    g_elem = self.girls_data[n]["element"]
+                    multi_def = self.elemental_multiplier(enemy_elem, g_elem) or 1.0
+                    if multi_def > 1.0:
+                        weak_count += 1
+                if weak_count >= 2:
+                    warn_txt = f"Warning: {enemy_elem} boss is strong against {weak_count} team member(s)."
+                elif weak_count == 1:
+                    warn_txt = f"Caution: {enemy_elem} boss is strong against 1 member."
+            matchup2_lbl.configure(text=warn_txt)
+
+            # Offensive advantage + overall score (boss)
+            if enemy_elem and names_sel:
+                strong_off = 0
+                weak_off = 0
+                for n in names_sel:
+                    g_elem = self.girls_data[n]["element"]
+                    multi_off = self.elemental_multiplier(g_elem, enemy_elem) or 1.0
+                    if multi_off > 1.0:
+                        strong_off += 1
+                    elif multi_off < 1.0:
+                        weak_off += 1
+                score = strong_off - weak_count
+                color = SUCCESS if score > 0 else ERROR if score < 0 else TEXT_SUB
+                adv2_lbl.configure(text=f"Offense: strong {strong_off}, weak {weak_off}  |  Score: {score:+d}", foreground=color)
+            else:
+                adv2_lbl.configure(text="", foreground=TEXT_SUB)
+
+        def _update_start2_state():
+            n = len(lst.curselection())
+            try:
+                start2_btn.configure(state=(tk.NORMAL if 1 <= n <= 3 else tk.DISABLED))
+            except Exception:
+                pass
+        lst.bind("<<ListboxSelect>>", lambda e: (_refresh_team2_stats_from_selection(), _update_start2_state()))
+
+        # Preset controls (reuse same data slots)
+        preset_row = ttk.Frame(box, style="Card.TFrame")
+        preset_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(preset_row, text="Team Preset:").pack(side=tk.LEFT)
+        preset_combo = ttk.Combobox(preset_row, values=["1", "2", "3"], state="readonly")
+        preset_combo.current(0)
+        preset_combo.pack(side=tk.LEFT, padx=6)
+
+        # Preset summary label
+        preset2_info = ttk.Label(box, text="", foreground=TEXT_SUB)
+        preset2_info.pack(anchor="w", pady=(4, 0))
+
+        def refresh_preset2_summary():
+            try:
+                presets = self.data.get("team_presets", [[], [], []])
+                pnames = self.data.get("team_preset_names", ["", "", ""]) or ["", "", ""]
+                lines = []
+                for i in range(3):
+                    members = presets[i] if i < len(presets) else []
+                    label = ", ".join(members) if members else "(empty)"
+                    title = pnames[i] if i < len(pnames) and pnames[i] else f"Slot {i+1}"
+                    lines.append(f"{title}: {label}")
+                preset2_info.configure(text=" \n".join(lines))
+            except Exception:
+                preset2_info.configure(text="")
+
+        def load_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            preset = [n for n in self.data.get("team_presets", [[], [], []])[slot] if n in available]
+            lst.selection_clear(0, tk.END)
+            if not preset:
+                messagebox.showinfo("Team Presets", "No saved team for this slot or members unavailable.")
+                return
+            name_by_index = [available[i] for i in range(len(available))]
+            for i, name in enumerate(name_by_index):
+                if name in preset:
+                    lst.selection_set(i)
+
+        def save_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            idxs = lst.curselection()
+            if not idxs or len(idxs) > 3:
+                messagebox.showerror("Team Presets", "Select 1 to 3 girls to save.")
+                return
+            team_names = [available[i] for i in idxs]
+            self.data["team_presets"][slot] = team_names
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Saved to slot {slot+1}: {', '.join(team_names)}")
+            refresh_preset2_summary()
+
+        def clear_preset():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            self.data["team_presets"][slot] = []
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Cleared slot {slot+1}.")
+            refresh_preset2_summary()
+
+        ttk.Button(preset_row, text="Load", command=load_preset).pack(side=tk.LEFT, padx=4)
+        ttk.Button(preset_row, text="Save", command=save_preset).pack(side=tk.LEFT, padx=4)
+        ttk.Button(preset_row, text="Clear", command=clear_preset).pack(side=tk.LEFT, padx=4)
+        refresh_preset2_summary()
+
+        # Quick save-to-slot buttons
+        def quick_save2(slot_idx):
+            idxs = lst.curselection()
+            if not idxs or len(idxs) > 3:
+                messagebox.showerror("Team Presets", "Select 1 to 3 girls to save.")
+                return
+            team_names = [available[i] for i in idxs]
+            self.data["team_presets"][slot_idx] = team_names
+            self.save_game(self.data)
+            messagebox.showinfo("Team Presets", f"Saved to slot {slot_idx+1}: {', '.join(team_names)}")
+            refresh_preset2_summary()
+
+        quick_row2 = ttk.Frame(box, style="Card.TFrame")
+        quick_row2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(quick_row2, text="Quick Save:").pack(side=tk.LEFT)
+        qs21 = ttk.Button(quick_row2, text="1", width=3, command=lambda: quick_save2(0)); qs21.pack(side=tk.LEFT, padx=2)
+        qs21_name = ttk.Label(quick_row2, text="", foreground=TEXT_SUB); qs21_name.pack(side=tk.LEFT, padx=(0,8))
+        qs22 = ttk.Button(quick_row2, text="2", width=3, command=lambda: quick_save2(1)); qs22.pack(side=tk.LEFT, padx=2)
+        qs22_name = ttk.Label(quick_row2, text="", foreground=TEXT_SUB); qs22_name.pack(side=tk.LEFT, padx=(0,8))
+        qs23 = ttk.Button(quick_row2, text="3", width=3, command=lambda: quick_save2(2)); qs23.pack(side=tk.LEFT, padx=2)
+        qs23_name = ttk.Label(quick_row2, text="", foreground=TEXT_SUB); qs23_name.pack(side=tk.LEFT, padx=(0,8))
+
+        # Quick load-from-slot buttons (boss)
+        def quick_load2(slot_idx):
+            presets = self.data.get("team_presets", [[], [], []])
+            preset = [n for n in presets[slot_idx] if n in available]
+            lst.selection_clear(0, tk.END)
+            if not preset:
+                messagebox.showinfo("Team Presets", f"Slot {slot_idx+1} is empty or members unavailable.")
+                return
+            name_by_index = [available[i] for i in range(len(available))]
+            for i, name in enumerate(name_by_index):
+                if name in preset:
+                    lst.selection_set(i)
+            _refresh_team2_stats_from_selection()
+            try:
+                _update_start2_state()
+            except Exception:
+                pass
+            try:
+                _update_start2_state()
+            except Exception:
+                pass
+
+        quick_row2_load = ttk.Frame(box, style="Card.TFrame")
+        quick_row2_load.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(quick_row2_load, text="Quick Load:").pack(side=tk.LEFT)
+        ql21 = ttk.Button(quick_row2_load, text="1", width=3, command=lambda: quick_load2(0)); ql21.pack(side=tk.LEFT, padx=2)
+        ql21_name = ttk.Label(quick_row2_load, text="", foreground=TEXT_SUB); ql21_name.pack(side=tk.LEFT, padx=(0,8))
+        ql22 = ttk.Button(quick_row2_load, text="2", width=3, command=lambda: quick_load2(1)); ql22.pack(side=tk.LEFT, padx=2)
+        ql22_name = ttk.Label(quick_row2_load, text="", foreground=TEXT_SUB); ql22_name.pack(side=tk.LEFT, padx=(0,8))
+        ql23 = ttk.Button(quick_row2_load, text="3", width=3, command=lambda: quick_load2(2)); ql23.pack(side=tk.LEFT, padx=2)
+        ql23_name = ttk.Label(quick_row2_load, text="", foreground=TEXT_SUB); ql23_name.pack(side=tk.LEFT, padx=(0,8))
+
+        def _refresh_quick2_name_labels():
+            names = self.data.get("team_preset_names", ["", "", ""]) or ["", "", ""]
+            def fmt(i):
+                return f"— {names[i]}" if names[i] else ""
+            ql21_name.configure(text=fmt(0)); ql22_name.configure(text=fmt(1)); ql23_name.configure(text=fmt(2))
+            qs21_name.configure(text=fmt(0)); qs22_name.configure(text=fmt(1)); qs23_name.configure(text=fmt(2))
+
+        # Preset naming controls (boss)
+        name2_row = ttk.Frame(box, style="Card.TFrame")
+        name2_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(name2_row, text="Preset Name:").pack(side=tk.LEFT)
+        name2_var = tk.StringVar(value="")
+        name2_entry = ttk.Entry(name2_row, textvariable=name2_var, width=18)
+        name2_entry.pack(side=tk.LEFT, padx=6)
+
+        def rename_preset2():
+            try:
+                slot = int(preset_combo.get()) - 1
+            except Exception:
+                slot = 0
+            self.data["team_preset_names"][slot] = name2_var.get().strip()
+            self.save_game(self.data)
+            refresh_preset2_summary()
+            _refresh_quick2_name_labels()
+
+        ttk.Button(name2_row, text="Rename", command=rename_preset2).pack(side=tk.LEFT)
+
         # Boss selection
         boss_names = [t[0] for t in BOSS_POOL]
         sel_boss = tk.StringVar()
@@ -1312,6 +1862,7 @@ class GachaApp:
         boss_combo = ttk.Combobox(box, values=boss_names, textvariable=sel_boss, state="readonly")
         boss_combo.current(0)
         boss_combo.pack(fill=tk.X)
+        boss_combo.bind("<<ComboboxSelected>>", lambda e: _refresh_team2_stats_from_selection())
 
         # Mode selection
         mode_var = tk.StringVar(value="auto")
@@ -1359,7 +1910,11 @@ class GachaApp:
                 win.destroy()
                 self._run_turn_battle(names, boss)
 
-        ttk.Button(box, text="Start Boss Fight", command=start).pack(pady=8)
+        # Hook start command and update button state
+        start2_btn.configure(command=start)
+        _update_start2_state()
+
+        # start2_btn already created above
 
 
 def run_gui(data, api):
