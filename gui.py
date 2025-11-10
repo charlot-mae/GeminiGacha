@@ -1119,6 +1119,11 @@ class GachaApp:
                     lst.selection_set(i)
             _refresh_team_stats_from_selection()
             try:
+                n = len(lst.curselection())
+                start_btn.configure(state=(tk.NORMAL if 1 <= n <= 3 else tk.DISABLED))
+            except Exception:
+                pass
+            try:
                 _update_start_state()
             except Exception:
                 pass
@@ -1192,6 +1197,11 @@ class GachaApp:
                 if name in preset:
                     lst.selection_set(i)
             _refresh_team_stats_from_selection()
+            try:
+                n = len(lst.curselection())
+                start_btn.configure(state=(tk.NORMAL if 1 <= n <= 3 else tk.DISABLED))
+            except Exception:
+                pass
 
         quick_row_load = ttk.Frame(box, style="Card.TFrame")
         quick_row_load.pack(fill=tk.X, pady=(4, 0))
@@ -1871,6 +1881,12 @@ class GachaApp:
         ttk.Label(mode_row, text="Mode:").pack(side=tk.LEFT)
         ttk.Radiobutton(mode_row, text="Autoplay", value="auto", variable=mode_var).pack(side=tk.LEFT, padx=6)
         ttk.Radiobutton(mode_row, text="Turn-Based", value="turn", variable=mode_var).pack(side=tk.LEFT, padx=6)
+
+        # Start button row (create before log; wire after start() is defined)
+        start2_row = ttk.Frame(box, style="Card.TFrame")
+        start2_row.pack(fill=tk.X, pady=(6, 0))
+        start2_btn = ttk.Button(start2_row, text="Start Boss Fight", state=tk.DISABLED)
+        start2_btn.pack(side=tk.RIGHT)
 
         log = tk.Text(box, bg=BG_CARD, fg=TEXT_FG, height=14)
         log.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
