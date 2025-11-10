@@ -63,6 +63,9 @@ class GachaApp:
         self.elemental_multiplier = api.get("elemental_multiplier", lambda a,b: 1.0)
 
         self.CLASS_HEALER = "Healer"
+        self.CLASS_TANK = "Tank"
+        self.CLASS_LEADER = "Leader"
+        self.CLASS_MORALE = "Morale"
 
         self.root.title("Gemstone Gacha")
         self.root.configure(bg=BG_DARK)
@@ -116,6 +119,24 @@ class GachaApp:
             win.geometry(f"{sw}x{sh}+0+0")
         except Exception:
             pass
+
+    def _open_class_legend(self):
+        try:
+            win = tk.Toplevel(self.root)
+            win.title("Class Effects Legend")
+            win.configure(bg=BG_DARK)
+            txt = (
+                "Healer — casts Group Shield periodically.\n"
+                "Tank — Defend becomes Guard to intercept the next hit (−30% damage).\n"
+                "Leader — +10% team ATK per Leader (stacks).\n"
+                "Morale — higher crit chance (5% base +10% per Morale)."
+            )
+            frm = ttk.Frame(win, style="Card.TFrame", padding=12)
+            frm.pack(fill=tk.BOTH, expand=True)
+            ttk.Label(frm, text=txt, foreground=TEXT_SUB, wraplength=640).pack(anchor="w")
+            ttk.Button(frm, text="Close", command=win.destroy).pack(pady=8)
+        except Exception:
+            messagebox.showinfo("Legend", "Healer: Group Shield | Tank: Guard (−30% dmg) | Leader: +10% team ATK per Leader | Morale: +crit chance.")
 
     def _element_badge(self, parent, element, size=14, bg=None):
         bg = bg or BG_CARD
@@ -1263,6 +1284,9 @@ class GachaApp:
         start_btn = ttk.Button(start_row, text="Start Battle", state=tk.DISABLED)
         start_btn.pack(side=tk.RIGHT)
 
+        # Legend button to avoid squashing the log
+        ttk.Button(start_row, text="Legend", command=self._open_class_legend).pack(side=tk.LEFT)
+
         log = tk.Text(box, bg=BG_CARD, fg=TEXT_FG, height=14)
         log.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
@@ -1308,7 +1332,18 @@ class GachaApp:
                 "hp": float(self.get_current_hp(name, gd, self.data)),
                 "max_hp": stats["hp"],
                 "shield": False,
+                "class": self.girls_data[name]["class"],
             })
+
+        # Leader aura: +10% team ATK per Leader
+        leaders = sum(1 for g in team if g["class"] == self.CLASS_LEADER)
+        if leaders > 0:
+            for g in team:
+                g["stats"]["attack"] = int(g["stats"]["attack"] * (1 + 0.10 * leaders))
+
+        # Morale crit chance: base 5% +10% per Morale
+        morales = sum(1 for g in team if g["class"] == self.CLASS_MORALE)
+        crit_chance = min(0.05 + 0.10 * morales, 0.75)
 
         mon_hp = float(monster["hp"])
         turn = 0
@@ -1329,9 +1364,15 @@ class GachaApp:
                     monster["element"],
                 ) or 1.0
                 dmg = max(1, int(base * multi) - monster["defense"])
+                import random as _r
+                if _r.random() < crit_chance:
+                    dmg = int(dmg * 1.5)
+                    crit_note = " CRIT!"
+                else:
+                    crit_note = ""
                 mon_hp -= dmg
                 note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
-                writeln(f"{g['name']} hits for {dmg}{note}")
+                writeln(f"{g['name']} hits for {dmg}{note}{crit_note}")
                 if mon_hp <= 0:
                     break
             if mon_hp <= 0:
@@ -1341,6 +1382,12 @@ class GachaApp:
                 break
             import random as _r
             target = _r.choice(targets)
+            # Tank guard: 50% chance a living Tank intercepts to protect non-Tank
+            tanks = [t for t in targets if t.get("class") == self.CLASS_TANK]
+            if target.get("class") != self.CLASS_TANK and tanks and _r.random() < 0.5:
+                guard = _r.choice(tanks)
+                writeln(f"{guard['name']} guards {target['name']}!")
+                target = guard
             if target["shield"]:
                 writeln(f"{monster['name']}'s attack is absorbed by shield on {target['name']}")
                 target["shield"] = False
@@ -1350,6 +1397,8 @@ class GachaApp:
                 g_elem = self.girls_data[target["name"]]["element"]
                 multi = self.elemental_multiplier(m_elem, g_elem) or 1.0
                 mdmg = max(1, int(monster["atk"] * multi) - target["stats"]["defense"])
+                if target.get("class") == self.CLASS_TANK:
+                    mdmg = int(mdmg * 0.7)
                 target["hp"] -= mdmg
                 note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
                 writeln(f"{monster['name']} hits {target['name']} for {mdmg}{note} (HP {int(target['hp'])})")
@@ -1390,7 +1439,23 @@ class GachaApp:
                 "special_cd": 0,
                 "defending": False,
                 "shield": False,
+                "guarding": False,
             })
+
+        # Class auras and crits
+        try:
+            leaders = sum(1 for n in team_names if self.girls_data[n]["class"] == self.CLASS_LEADER)
+        except Exception:
+            leaders = 0
+        if leaders > 0:
+            for g in team:
+                g["stats"]["attack"] = int(g["stats"]["attack"] * (1 + 0.10 * leaders))
+
+        try:
+            morales = sum(1 for n in team_names if self.girls_data[n]["class"] == self.CLASS_MORALE)
+        except Exception:
+            morales = 0
+        crit_chance = min(0.05 + 0.10 * morales, 0.75)
 
         mon_hp = float(monster["hp"])
         mon_max = float(monster["hp"])
@@ -1441,7 +1506,13 @@ class GachaApp:
                 row = ttk.Frame(team_frame, style="Card.TFrame")
                 row.pack(anchor="w", fill=tk.X)
                 self._element_badge(row, self.girls_data[g['name']]['element'], size=12, bg=BG_DARK).pack(side=tk.LEFT, padx=(0,6))
-                ttk.Label(row, text=f"{g['name']} HP {int(g['hp'])}/{g['max_hp']}  CD {g['special_cd']}  {'SHIELD' if g['shield'] else ''}", foreground=color).pack(side=tk.LEFT)
+                flags = []
+                if g.get("shield"):
+                    flags.append("SHIELD")
+                if g.get("guarding"):
+                    flags.append("GUARD")
+                flag_txt = ("  " + " ".join(flags)) if flags else ""
+                ttk.Label(row, text=f"{g['name']} HP {int(g['hp'])}/{g['max_hp']}  CD {g['special_cd']}{flag_txt}", foreground=color).pack(side=tk.LEFT)
 
         def next_turn_or_monster():
             nonlocal turn_idx, turn_count, mon_hp
@@ -1466,6 +1537,8 @@ class GachaApp:
             nonlocal turn_idx
             g = team[turn_idx]
             g["defending"] = False
+            if g.get("guarding"):
+                g["guarding"] = False
             act_label.configure(text=f"{g['name']}'s turn — choose action")
             btn_basic.configure(command=lambda: do_action("basic"))
             btn_special.configure(command=lambda: do_action("special"), state=(tk.NORMAL if g["special_cd"] == 0 else tk.DISABLED))
@@ -1482,8 +1555,19 @@ class GachaApp:
                     monster["element"],
                 ) or 1.0
                 dmg = max(1, int(base * multi) - monster["defense"])
+                import random as _r
+                crit = _r.random() < 0.15  # base; will be raised below if morale present
+                # Adjust by team morale count if available in closure (computed later)
+                try:
+                    crit = (_r.random() < crit_chance)
+                except Exception:
+                    pass
+                if crit:
+                    dmg = int(dmg * 1.5)
                 mon_hp -= dmg
                 note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                if crit:
+                    note += " CRIT!"
                 writeln(f"{g['name']} uses Basic Attack for {dmg}{note}")
             elif kind == "special":
                 if self.girls_data[g["name"]]["class"] == self.CLASS_HEALER:
@@ -1495,13 +1579,26 @@ class GachaApp:
                     base = int(g["stats"]["attack"] * 2.0)
                     multi = self.elemental_multiplier(self.girls_data[g["name"]]["element"], monster["element"]) or 1.0
                     dmg = max(1, int(base * multi) - monster["defense"])
+                    import random as _r
+                    try:
+                        crit = (_r.random() < crit_chance)
+                    except Exception:
+                        crit = False
+                    if crit:
+                        dmg = int(dmg * 1.5)
                     mon_hp -= dmg
                     g["special_cd"] = 6
                     note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
+                    if crit:
+                        note += " CRIT!"
                     writeln(f"{g['name']} uses Special for {dmg}{note}")
             elif kind == "defend":
-                g["defending"] = True
-                writeln(f"{g['name']} defends")
+                if self.girls_data[g["name"]]["class"] == self.CLASS_TANK:
+                    g["guarding"] = True
+                    writeln(f"{g['name']} guards the team")
+                else:
+                    g["defending"] = True
+                    writeln(f"{g['name']} defends")
 
             g["special_cd"] = max(0, g["special_cd"] - 1)
             if mon_hp <= 0:
@@ -1534,6 +1631,11 @@ class GachaApp:
                 return
             import random as _r
             t = _r.choice(alive_targets)
+            # Redirect to guarding tank
+            guards = [x for x in alive_targets if x.get("guarding") and self.girls_data[x["name"]]["class"] == self.CLASS_TANK]
+            if guards and (self.girls_data[t["name"]]["class"] != self.CLASS_TANK or not t.get("guarding")):
+                t = _r.choice(guards)
+                writeln(f"{t['name']} intercepts the attack!")
             if t["defending"]:
                 writeln(f"{monster['name']}'s attack is blocked by {t['name']}")
             elif t["shield"]:
@@ -1545,6 +1647,8 @@ class GachaApp:
                 g_elem = self.girls_data[t["name"]]["element"]
                 multi = self.elemental_multiplier(m_elem, g_elem) or 1.0
                 mdmg = max(1, int(monster["atk"] * multi) - t["stats"]["defense"])
+                if t.get("guarding") and self.girls_data[t["name"]]["class"] == self.CLASS_TANK:
+                    mdmg = int(mdmg * 0.7)
                 t["hp"] -= mdmg
                 note = " (super effective)" if multi > 1 else " (not very effective)" if multi < 1 else ""
                 writeln(f"{monster['name']} hits {t['name']} for {mdmg}{note}")
@@ -1887,6 +1991,7 @@ class GachaApp:
         start2_row.pack(fill=tk.X, pady=(6, 0))
         start2_btn = ttk.Button(start2_row, text="Start Boss Fight", state=tk.DISABLED)
         start2_btn.pack(side=tk.RIGHT)
+        ttk.Button(start2_row, text="Legend", command=self._open_class_legend).pack(side=tk.LEFT)
 
         log = tk.Text(box, bg=BG_CARD, fg=TEXT_FG, height=14)
         log.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
